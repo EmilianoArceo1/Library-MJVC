@@ -150,14 +150,40 @@ export async function PATCH(request: Request) {
 
     if (type === "registration") {
       const row = await env.DB.prepare(
-        `SELECT id, user_id AS userId, requester_name AS name, requester_email AS email
-         FROM account_requests WHERE id = ? LIMIT 1`,
+        `SELECT
+          r.id,
+          r.user_id AS userId,
+          r.requester_name AS name,
+          r.requester_email AS email,
+          u.role AS currentRole
+         FROM account_requests r
+         LEFT JOIN users u ON u.id = r.user_id
+         WHERE r.id = ?
+         LIMIT 1`,
       )
         .bind(id)
-        .first<{ id: number; userId: string; name: string; email: string }>();
+        .first<{
+          id: number;
+          userId: string;
+          name: string;
+          email: string;
+          currentRole: string | null;
+        }>();
 
-      if (!row) {
-        return Response.json({ error: "Solicitud de registro no encontrada." }, { status: 404 });
+      if (!row || !row.currentRole) {
+        return Response.json({ error: "Solicitud de registro no encontrada o cuenta eliminada." }, { status: 404 });
+      }
+      if (row.userId === session.id) {
+        return Response.json(
+          { error: "No puedes dictaminar tu propia solicitud." },
+          { status: 409 },
+        );
+      }
+      if (session.role === "advisor" && row.currentRole !== "reader") {
+        return Response.json(
+          { error: "Los asesores solo pueden dictaminar cuentas de lectores." },
+          { status: 403 },
+        );
       }
 
       await env.DB.prepare(
@@ -236,6 +262,12 @@ export async function PATCH(request: Request) {
 
     if (!requestRow) {
       return Response.json({ error: "Solicitud de libro no encontrada." }, { status: 404 });
+    }
+    if (requestRow.userId === session.id) {
+      return Response.json(
+        { error: "No puedes dictaminar tu propia propuesta de libro." },
+        { status: 409 },
+      );
     }
 
     let createdBookId = requestRow.createdBookId;
