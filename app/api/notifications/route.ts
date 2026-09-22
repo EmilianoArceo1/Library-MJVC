@@ -140,16 +140,21 @@ export async function POST(request: Request) {
       );
     }
 
-    await createNotification({
-      userId: null,
-      title,
-      body,
-      kind: "broadcast",
-      createdById: session.id,
-      createdByName: session.name,
-    });
+    await ensureWorkflowSchema();
+    const now = Date.now();
+    const result = await env.DB.prepare(
+      `INSERT INTO notifications
+        (user_id, title, body, kind, created_by_id, created_by_name, created_at)
+       SELECT id, ?, ?, 'broadcast', ?, ?, ?
+       FROM users`,
+    )
+      .bind(title, body, session.id, session.name, now)
+      .run();
 
-    return Response.json({ ok: true });
+    return Response.json({
+      ok: true,
+      recipients: result.meta.changes ?? 0,
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "No se pudo enviar el aviso.";
