@@ -168,12 +168,6 @@ export async function PATCH(request: Request) {
     if (!session) {
       return Response.json({ error: "Inicia sesión para actualizar tu lectura." }, { status: 401 });
     }
-    if (session.approvalStatus !== "approved") {
-      return Response.json(
-        { error: "Tu cuenta debe estar aprobada para actualizar préstamos." },
-        { status: 403 },
-      );
-    }
 
     const payload = (await request.json()) as {
       loanId?: number;
