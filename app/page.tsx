@@ -18,7 +18,7 @@ const reactionKey=(targetType:ReactionTargetType,targetId:string|number,emoji:st
 
 function Avatar({name,color,small=false,src=null}:{name:string;color:string;small?:boolean;src?:string|null}){return <div className={`avatar ${small?"small":""}`} style={{background:color}} aria-label={name}>{src?<img src={src} alt=""/>:name[0]}</div>}
 function Stars({rating,onSelect}:{rating:number;onSelect?:(rating:number)=>void}){return <span className={`stars ${onSelect?"interactive":""}`} aria-label={`${rating} de 5`}>{[1,2,3,4,5].map(n=>onSelect?<button type="button" key={n} className={n<=rating?"on":""} onClick={()=>onSelect(n)} aria-label={`${n} estrellas`}>★</button>:<span key={n} className={n<=Math.round(rating)?"on":""}>★</span>)}</span>}
-function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumber?:number;side:"left"|"right";zoom:number}){return <article className={`reader-sheet ${side} ${!page?"blank":""}`} style={{fontSize:`${zoom}em`}}>{page?<><div className="reader-sheet-inner">{page.artwork&&<img className="reader-artwork" src={page.artwork} alt="Ilustración recuperada del documento original"/>}{page.heading&&<h3>{page.heading}</h3>}{page.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div><span className="reader-page-number">{pageNumber}</span></>:<div className="reader-sheet-inner reader-blank-page"/>}</article>}
+function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumber?:number;side:"left"|"right";zoom:number}){return <article className={`reader-sheet ${side} ${!page?"blank":""} ${page?.heading?"has-heading":""}`} style={{fontSize:`${zoom}em`}}>{page?<><div className="reader-sheet-inner">{page.artwork&&<img className="reader-artwork" src={page.artwork} alt="Ilustración recuperada del documento original"/>}{page.heading&&<h3>{page.heading}</h3>}{page.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div><span className="reader-page-number">{pageNumber}</span></>:<div className="reader-sheet-inner reader-blank-page"/>}</article>}
 
 export default function Home(){
   const [view,setView]=useState<View>("biblioteca"),[books,setBooks]=useState<Book[]>([]),[people,setPeople]=useState<Reader[]>([]),[selected,setSelected]=useState<Book|null>(null),[search,setSearch]=useState(""),[year,setYear]=useState(""),[type,setType]=useState("");
@@ -217,7 +217,10 @@ export default function Home(){
     pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
     const pdf=await pdfjs.getDocument({data}).promise;
     const pages:ReconstructedPage[]=[];
-    const imageOps=new Set([pdfjs.OPS.paintImageXObject,pdfjs.OPS.paintInlineImageXObject,pdfjs.OPS.paintImageMaskXObject].filter((value):value is number=>typeof value==="number"));
+    const imageOps=new Set<number>();
+    for(const operation of [pdfjs.OPS.paintImageXObject,pdfjs.OPS.paintInlineImageXObject]){
+      if(typeof operation==="number")imageOps.add(operation);
+    }
     for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber++){
       const page=await pdf.getPage(pageNumber);
       const content=await page.getTextContent();
