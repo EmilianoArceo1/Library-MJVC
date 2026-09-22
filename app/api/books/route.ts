@@ -44,9 +44,12 @@ export async function POST(request: Request) {
       );
     }
 
-    if (session.role !== "admin") {
+    if (
+      session.approvalStatus !== "approved" ||
+      (session.role !== "admin" && session.role !== "advisor")
+    ) {
       return Response.json(
-        { error: "Solo un administrador puede agregar libros." },
+        { error: "Solo administradores y asesores aprobados pueden agregar libros directamente." },
         { status: 403 },
       );
     }
