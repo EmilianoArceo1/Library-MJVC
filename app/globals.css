@@ -387,3 +387,20 @@
   filter:sepia(.08) contrast(.92) saturate(.75);
 }
 .reader-cover>*:not(.reader-cover-art){position:relative;z-index:2}
+
+.reader-zoom-shell{
+  display:grid;
+  place-items:center;
+  transform-origin:center center;
+  transition:transform .16s ease;
+}
+.reader-spread.turn-next{animation:pageTurnNext .28s ease}
+.reader-spread.turn-prev{animation:pageTurnPrev .28s ease}
+@keyframes pageTurnNext{
+  0%{opacity:.45;transform:perspective(1400px) rotateY(-5deg) translateX(10px)}
+  100%{opacity:1;transform:perspective(1400px) rotateY(0) translateX(0)}
+}
+@keyframes pageTurnPrev{
+  0%{opacity:.45;transform:perspective(1400px) rotateY(5deg) translateX(-10px)}
+  100%{opacity:1;transform:perspective(1400px) rotateY(0) translateX(0)}
+}
