@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getSessionUser } from "../../auth-server";
-import { createNotification, ensureWorkflowSchema } from "../../workflow-server";
+import { ensureWorkflowSchema } from "../../workflow-server";
 
 export async function GET(request: Request) {
   try {
