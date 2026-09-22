@@ -170,6 +170,11 @@ export default function Home(){
     return ()=>{cancelled=true;window.clearInterval(timer)};
   },[currentUser?.id]);
   useEffect(()=>{
+    if(currentUser&&currentUser.approvalStatus!=="approved"&&(view==="gestion"||view==="subir")){
+      setView("notificaciones");
+    }
+  },[currentUser?.approvalStatus,view]);
+  useEffect(()=>{
     const root=document.documentElement;
     root.dataset.theme=theme;
     root.style.colorScheme=theme;
