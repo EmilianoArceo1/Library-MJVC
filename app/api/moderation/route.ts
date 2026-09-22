@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getDb } from "../../../db";
 import { books } from "../../../db/schema";
+import { eq } from "drizzle-orm";
 import { getSessionUser } from "../../auth-server";
 import {
   createNotification,
@@ -238,8 +239,17 @@ export async function PATCH(request: Request) {
     }
 
     let createdBookId = requestRow.createdBookId;
+    const db = getDb();
+    if (decision === "approved" && createdBookId) {
+      const [existingBook] = await db
+        .select({ id: books.id })
+        .from(books)
+        .where(eq(books.id, createdBookId))
+        .limit(1);
+      if (!existingBook) createdBookId = null;
+    }
+
     if (decision === "approved" && !createdBookId) {
-      const db = getDb();
       const [created] = await db
         .insert(books)
         .values({
@@ -261,7 +271,7 @@ export async function PATCH(request: Request) {
 
     await env.DB.prepare(
       `UPDATE book_upload_requests
-       SET status = ?, created_book_id = COALESCE(created_book_id, ?),
+       SET status = ?, created_book_id = ?,
            updated_at = ?, last_decision_by = ?, last_decision_at = ?
        WHERE id = ?`,
     )
