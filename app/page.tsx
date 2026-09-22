@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type View = "biblioteca" | "comunidad" | "foro" | "subir" | "lector";
 type Book = { id:number; title:string; author:string; year:number; pages:number; type:string; color:string; cover:string; synopsis:string; rating:number; available:number; copies:number; readers:string[]; progress?:number };
@@ -22,6 +22,9 @@ export default function Home(){
   const [owned,setOwned]=useState<Book|null>(null),[toast,setToast]=useState(""),[modal,setModal]=useState<"detail"|"return"|"profile"|null>(null),[posts,setPosts]=useState<ForumPost[]>(initialPosts),[draft,setDraft]=useState(""),[publishing,setPublishing]=useState(false),[postBook,setPostBook]=useState(""),[liked,setLiked]=useState<number[]>([]),[reactionCounts,setReactionCounts]=useState<Record<string,number>>({}),[reactionBusy,setReactionBusy]=useState<string[]>([]);
   const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookUploading,setBookUploading]=useState(false);
   const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false);
+  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(1),[readerTotalPages,setReaderTotalPages]=useState(0),[readerKind,setReaderKind]=useState<"pdf"|"text"|null>(null),[readerTextPages,setReaderTextPages]=useState<string[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState("");
+  const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false);
+  const pdfDocRef=useRef<any>(null),readerCanvasRef=useRef<HTMLCanvasElement|null>(null);
   const [shelfPage,setShelfPage]=useState(0);
   const sortedBooks=useMemo(()=>[...books].sort((a,b)=>a.title.localeCompare(b.title,"es",{sensitivity:"base"})),[books]);
   const filtered=useMemo(()=>sortedBooks.filter(b=>(!search||`${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()))&&(!year||String(b.year)===year)&&(!type||b.type===type)),[search,year,type,sortedBooks]);
@@ -63,6 +66,34 @@ export default function Home(){
       .catch(error=>console.error("No se pudo cargar el catálogo real",error));
     return ()=>{cancelled=true};
   },[]);
+  useEffect(()=>{
+    let cancelled=false;
+    if(!currentUser){
+      setOwned(null);
+      setLoanId(null);
+      return ()=>{cancelled=true};
+    }
+    fetch("/api/loans")
+      .then(async response=>{
+        const payload=await response.json();
+        if(!response.ok)throw new Error(payload.error||"No se pudo cargar tu préstamo");
+        return payload;
+      })
+      .then(payload=>{
+        if(cancelled)return;
+        if(!payload.loan){
+          setOwned(null);
+          setLoanId(null);
+          return;
+        }
+        const base=payload.loan.book as Book;
+        const catalogBook=books.find(book=>book.id===base.id);
+        setOwned({...base,color:catalogBook?.color||"#315f86",cover:catalogBook?.cover||"linear-gradient(145deg,#274b3d,#6f9b6b)",readers:catalogBook?.readers||[]});
+        setLoanId(Number(payload.loan.id));
+      })
+      .catch(error=>console.error("No se pudo cargar el préstamo activo",error));
+    return ()=>{cancelled=true};
+  },[currentUser?.id,books.length]);
   useEffect(()=>{
     let cancelled=false;
     fetch("/api/posts")
@@ -126,7 +157,110 @@ export default function Home(){
       setReactionBusy(current=>current.filter(item=>item!==busyKey));
     }
   };
-  const takeBook=()=>{if(!selected){flash("Selecciona un libro primero.");return}if(selected.available<1){flash("Ese ejemplar está en préstamo. Te avisaremos cuando vuelva.");return}if(owned){flash("Devuelve tu lectura actual antes de tomar otra.");return}setOwned({...selected,progress:0});setModal(null);flash(`“${selected.title}” ya está en tu poder.`)};
+  const takeBook=async()=>{
+    if(!currentUser){setAuthView("login");flash("Inicia sesión para tomar un libro.");return}
+    if(!selected){flash("Selecciona un libro primero.");return}
+    if(selected.available<1){flash("Ese ejemplar está en préstamo.");return}
+    if(owned){flash("Devuelve tu lectura actual antes de tomar otra.");return}
+    try{
+      const response=await fetch("/api/loans",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({bookId:selected.id})});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.error||"No se pudo tomar el libro");
+      setLoanId(Number(payload.loan.id));
+      setOwned({...selected,available:payload.loan.book.available,progress:0});
+      setBooks(current=>current.map(book=>book.id===selected.id?{...book,available:Math.max(0,book.available-1)}:book));
+      setModal(null);
+      flash(`“${selected.title}” ya está en tu poder.`);
+    }catch(error){
+      flash(error instanceof Error?error.message:"No se pudo tomar el libro.");
+    }
+  };
+  const pageFromProgress=(progress:number,total:number)=>progress<=0||total<=1?1:Math.min(total,Math.max(1,Math.round(1+(progress/100)*(total-1))));
+  useEffect(()=>{
+    let cancelled=false;
+    if(view!=="lector"||!owned)return ()=>{cancelled=true};
+    setReaderLoading(true);
+    setReaderError("");
+    setReaderKind(null);
+    setReaderTextPages([]);
+    pdfDocRef.current=null;
+    fetch(`/api/books/file?id=${owned.id}`)
+      .then(async response=>{
+        if(!response.ok)throw new Error(await response.text()||"No se pudo abrir el archivo");
+        const contentType=response.headers.get("content-type")||"";
+        if(contentType.includes("pdf")){
+          const [pdfjs,workerModule]=await Promise.all([import("pdfjs-dist"),import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
+          pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
+          const pdf=await pdfjs.getDocument({data:await response.arrayBuffer()}).promise;
+          if(cancelled)return;
+          pdfDocRef.current=pdf;
+          setReaderKind("pdf");
+          setReaderTotalPages(pdf.numPages);
+          setReaderPage(pageFromProgress(owned.progress||0,pdf.numPages));
+        }else{
+          const text=await response.text();
+          const words=text.trim()?text.trim().split(/\s+/):[];
+          const pages:string[]=[];
+          for(let index=0;index<words.length;index+=300)pages.push(words.slice(index,index+300).join(" "));
+          if(pages.length===0)pages.push("Este archivo no contiene texto visible.");
+          if(cancelled)return;
+          setReaderTextPages(pages);
+          setReaderKind("text");
+          setReaderTotalPages(pages.length);
+          setReaderPage(pageFromProgress(owned.progress||0,pages.length));
+        }
+      })
+      .catch(error=>{if(!cancelled)setReaderError(error instanceof Error?error.message:"No se pudo abrir el libro.")})
+      .finally(()=>{if(!cancelled)setReaderLoading(false)});
+    return ()=>{cancelled=true};
+  },[view,owned?.id]);
+  useEffect(()=>{
+    let cancelled=false;
+    if(readerKind!=="pdf"||!pdfDocRef.current||!readerCanvasRef.current)return ()=>{cancelled=true};
+    const render=async()=>{
+      try{
+        const page=await pdfDocRef.current.getPage(readerPage);
+        if(cancelled||!readerCanvasRef.current)return;
+        const canvas=readerCanvasRef.current;
+        const viewport=page.getViewport({scale:1.45});
+        const context=canvas.getContext("2d");
+        if(!context)return;
+        canvas.width=Math.floor(viewport.width);
+        canvas.height=Math.floor(viewport.height);
+        await page.render({canvasContext:context,viewport}).promise;
+      }catch(error){
+        if(!cancelled)setReaderError(error instanceof Error?error.message:"No se pudo mostrar esta página.");
+      }
+    };
+    render();
+    return ()=>{cancelled=true};
+  },[readerKind,readerPage,readerTotalPages]);
+  useEffect(()=>{
+    if(view!=="lector"||!loanId||readerTotalPages<1)return;
+    const progress=readerTotalPages<=1?0:Math.round(((readerPage-1)/(readerTotalPages-1))*100);
+    setOwned(current=>current?{...current,progress}:current);
+    const timer=setTimeout(()=>{
+      fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress})}).catch(error=>console.error("No se pudo guardar el progreso",error));
+    },450);
+    return ()=>clearTimeout(timer);
+  },[view,loanId,readerPage,readerTotalPages]);
+  const goReaderPage=(page:number)=>setReaderPage(Math.min(readerTotalPages,Math.max(1,page)));
+  const returnBook=async(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!owned||!loanId)return;
+    if(!returnRating){flash("Selecciona una calificación antes de devolver el libro");return}
+    try{
+      const response=await fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"return",rating:returnRating})});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.error||"No se pudo devolver el libro");
+      setBooks(current=>current.map(book=>book.id===owned.id?{...book,available:Math.min(book.copies,book.available+1)}:book));
+      setCurrentUser(user=>user?{...user,pagesRead:user.pagesRead+owned.pages}:user);
+      setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setView("biblioteca");setReaderPage(1);setReaderTotalPages(0);pdfDocRef.current=null;
+      flash("Libro devuelto. Gracias por dejarlo disponible para alguien más.");
+    }catch(error){
+      flash(error instanceof Error?error.message:"No se pudo devolver el libro.");
+    }
+  };
   const publish=async()=>{if(!currentUser){setAuthView("login");flash("Inicia sesión para publicar.");return}const text=draft.trim();if(!text||publishing)return;setPublishing(true);try{const response=await fetch("/api/posts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,book:postBook})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar la publicación");setPosts(current=>[payload.post,...current]);setDraft("");flash("Tu reflexión ya está en la conversación.")}catch(error){flash(error instanceof Error?`No se pudo publicar: ${error.message}`:"No se pudo publicar la reflexión.")}finally{setPublishing(false)}};
   const submitReply=(postId:number)=>{if(!currentUser){setAuthView("login");flash("Inicia sesión para responder.");return}if(!replyDrafts[postId]?.trim())return;setPosts(current=>current.map(post=>post.id===postId?{...post,replies:post.replies+1}:post));setReplyDrafts(current=>({...current,[postId]:""}));flash("Respuesta publicada")};
   const toggleProfileReaction=async(name:string,emoji:string)=>{const active=await toggleReaction("profile",name,emoji);if(active!==null)flash(active?`Reaccionaste al perfil de ${name}`:`Quitaste tu reacción a ${name}`)};
@@ -190,6 +324,53 @@ export default function Home(){
       flash(error instanceof Error?error.message:"No se pudo guardar el libro.");
     }finally{
       setBookUploading(false);
+    }
+  };
+  const saveBookEdit=async(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!editingBook||bookAdminBusy)return;
+    const data=new FormData(event.currentTarget);
+    setBookAdminBusy(true);
+    try{
+      const response=await fetch("/api/books",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        id:editingBook.id,
+        title:String(data.get("title")||""),
+        author:String(data.get("author")||""),
+        year:Number(data.get("year")),
+        type:String(data.get("type")||""),
+        synopsis:String(data.get("synopsis")||""),
+        copies:Number(data.get("copies")),
+      })});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.error||"No se pudo editar el libro");
+      const updated:Book={...editingBook,...payload.book,color:editingBook.color,cover:editingBook.cover,readers:editingBook.readers};
+      setBooks(current=>current.map(book=>book.id===updated.id?updated:book));
+      setSelected(current=>current?.id===updated.id?updated:current);
+      setOwned(current=>current?.id===updated.id?{...current,...updated,progress:current.progress}:current);
+      setEditingBook(null);
+      flash("Libro actualizado.");
+    }catch(error){
+      flash(error instanceof Error?error.message:"No se pudo editar el libro.");
+    }finally{
+      setBookAdminBusy(false);
+    }
+  };
+  const deleteBook=async(book:Book)=>{
+    if(bookAdminBusy)return;
+    if(!window.confirm(`¿Eliminar “${book.title}” de la biblioteca? Esta acción no se puede deshacer.`))return;
+    setBookAdminBusy(true);
+    try{
+      const response=await fetch(`/api/books?id=${book.id}`,{method:"DELETE"});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.error||"No se pudo eliminar el libro");
+      setBooks(current=>current.filter(item=>item.id!==book.id));
+      setSelected(current=>current?.id===book.id?null:current);
+      if(editingBook?.id===book.id)setEditingBook(null);
+      flash("Libro eliminado.");
+    }catch(error){
+      flash(error instanceof Error?error.message:"No se pudo eliminar el libro.");
+    }finally{
+      setBookAdminBusy(false);
     }
   };
   const submitAuth=async(event:FormEvent<HTMLFormElement>)=>{
@@ -273,8 +454,8 @@ export default function Home(){
     <header className="topbar"><button className="brand" onClick={()=>setView("biblioteca")}><span className="brandmark">B</span><span><b>Biblioteca virtual MJVC Mérida</b><small>Colección, préstamo y lectura en un solo lugar</small></span></button><nav>{[["biblioteca","Estantería"],["comunidad","Lectores"],["foro","Foro"]].map(([id,label])=><button key={id} className={view===id?"active":""} onClick={()=>setView(id as View)}>{label}</button>)}</nav><div className="profile-menu">{authLoading?<span className="login-link">Cargando…</span>:loggedIn?<>{currentUser?.role==="admin"&&<button className="upload-link" onClick={()=>setView("subir")}>＋ Subir libro</button>}<button className="me" onClick={()=>setModal("profile")}><Avatar name={currentName} color="#cf915f" small src={currentUser?.photoUrl}/><span>{currentName}{currentUser?.role==="admin"?" · Admin":""}</span></button><button className="logout" onClick={logout}>Cerrar sesión</button></>:<><button className="login-link" onClick={()=>setAuthView("login")}>Iniciar sesión</button><button className="upload-link" onClick={()=>setAuthView("signup")}>Registrarse</button></>}</div></header>
 
     {view==="biblioteca"&&<div className="library-layout">
-      <aside className="left-panel"><p className="eyebrow">EN TU MESITA</p><h2>{owned?"Una historia te espera":"Tu mesita está libre"}</h2>{owned?<><button className="owned-cover" style={{background:owned.cover}} onClick={()=>setView("lector")}><span>{owned.title}</span><small>{owned.author}</small><i>{owned.progress||36}%</i></button><div className="progress"><span style={{width:`${owned.progress||36}%`}}/></div><p className="muted">Página {Math.round(owned.pages*(owned.progress||36)/100)} de {owned.pages}</p><div className="pair"><button className="primary" onClick={()=>setView("lector")}>Continuar</button><button className="secondary" onClick={()=>setModal("return")}>Devolver</button></div></>:<p className="empty-note">Explora el estante y elige tu próxima lectura.</p>}<div className="leader-mini"><div className="section-title"><div><p className="eyebrow">ZONA DE LECTORES</p><h3>Quienes más han leído</h3></div><button onClick={()=>setView("comunidad")}>Ver todos →</button></div><div className="avatar-row">{people.map((p,i)=><button key={p.name} onClick={()=>setView("comunidad")}><span className="rank">{i+1}</span><Avatar name={p.name} color={p.color} small src={p.photoUrl}/></button>)}</div></div><button className="forum-card" onClick={()=>setView("foro")}><span>Conversaciones del club</span><b>Entrar al foro <i>↗</i></b></button></aside>
-      <section className="shelf-area"><div className="welcome"><div><p className="eyebrow">{loggedIn?`HOLA, ${currentName.toUpperCase()}`:"CATÁLOGO MJVC MÉRIDA"}</p><h1>¿Qué historia te llama hoy?</h1></div><p>{filtered.length} títulos en el estante</p></div><div className="filters"><label className="search"><span>⌕</span><input value={search} onChange={e=>{setSearch(e.target.value);setShelfPage(0)}} placeholder="Busca por título o autor"/></label><label><span>Año</span><select value={year} onChange={e=>{setYear(e.target.value);setShelfPage(0)}}><option value="">Todos</option>{[...new Set(books.map(b=>b.year))].sort((a,b)=>b-a).map(y=><option key={y}>{y}</option>)}</select></label><label><span>Tipo</span><select value={type} onChange={e=>{setType(e.target.value);setShelfPage(0)}}><option value="">Todos</option>{[...new Set(books.map(b=>b.type))].map(t=><option key={t}>{t}</option>)}</select></label>{(search||year||type)&&<button className="clear" onClick={()=>{setSearch("");setYear("");setType("");setShelfPage(0)}}>Limpiar</button>}</div><div className="shelf-card"><div className="shelf-head"><span>COLECCIÓN GENERAL · A–Z</span><span>Estante {shelfPage+1} de {shelfCount}</span></div><div className="books">{visibleBooks.length===0?<p className="empty-note">La biblioteca está vacía. Los libros que agregues a D1 aparecerán aquí.</p>:visibleBooks.map(book=>{const match=filtered.includes(book),width=Math.max(36,Math.min(72,30+book.pages/12)),titleSize=Math.round(Math.max(8,Math.min(15,width/(Math.sqrt(book.title.length)*1.45)))*10)/10;return <button key={book.id} className={`book ${match?"match":"dim"} ${book.available<1?"borrowed":""}`} style={{width,background:book.color}} onMouseEnter={()=>setSelected(book)} onClick={()=>{setSelected(book);setModal("detail")}}><span style={{fontSize:titleSize}}>{book.title}</span><small>{book.author.split(" ").slice(-1)}</small>{book.available<1&&<i>•</i>}<div className="hover-cover" style={{background:book.cover}}><b>{book.title}</b><small>{book.author}</small></div></button>})}</div><div className="wood"/></div><div className="shelf-pagination" aria-label="Cambiar de estante"><button disabled={shelfPage===0} onClick={()=>setShelfPage(page=>Math.max(0,page-1))} aria-label="Estante anterior">←</button><span>{shelfPage+1} / {shelfCount}</span><button disabled={shelfPage>=shelfCount-1} onClick={()=>setShelfPage(page=>Math.min(shelfCount-1,page+1))} aria-label="Estante siguiente">→</button></div></section>
+      <aside className="left-panel"><p className="eyebrow">EN TU MESITA</p><h2>{owned?"Una historia te espera":"Tu mesita está libre"}</h2>{owned?<><button className="owned-cover" style={{background:owned.cover}} onClick={()=>setView("lector")}><span>{owned.title}</span><small>{owned.author}</small><i>{owned.progress??0}%</i></button><div className="progress"><span style={{width:`${owned.progress??0}%`}}/></div><p className="muted">Página {owned.progress&&owned.pages>1?Math.min(owned.pages,Math.max(1,Math.round(1+(owned.progress/100)*(owned.pages-1)))):1} de {owned.pages}</p><div className="pair"><button className="primary" onClick={()=>setView("lector")}>Continuar</button><button className="secondary" onClick={()=>setModal("return")}>Devolver</button></div></>:<p className="empty-note">Explora el estante y elige tu próxima lectura.</p>}<div className="leader-mini"><div className="section-title"><div><p className="eyebrow">ZONA DE LECTORES</p><h3>Quienes más han leído</h3></div><button onClick={()=>setView("comunidad")}>Ver todos →</button></div><div className="avatar-row">{people.map((p,i)=><button key={p.name} onClick={()=>setView("comunidad")}><span className="rank">{i+1}</span><Avatar name={p.name} color={p.color} small src={p.photoUrl}/></button>)}</div></div><button className="forum-card" onClick={()=>setView("foro")}><span>Conversaciones del club</span><b>Entrar al foro <i>↗</i></b></button></aside>
+      <section className="shelf-area"><div className="welcome"><div><p className="eyebrow">{loggedIn?`HOLA, ${currentName.toUpperCase()}`:"CATÁLOGO MJVC MÉRIDA"}</p><h1>¿Qué historia te llama hoy?</h1></div><p>{filtered.length} títulos en el estante</p></div><div className="filters"><label className="search"><span>⌕</span><input value={search} onChange={e=>{setSearch(e.target.value);setShelfPage(0)}} placeholder="Busca por título o autor"/></label><label><span>Año</span><select value={year} onChange={e=>{setYear(e.target.value);setShelfPage(0)}}><option value="">Todos</option>{[...new Set(books.map(b=>b.year))].sort((a,b)=>b-a).map(y=><option key={y}>{y}</option>)}</select></label><label><span>Tipo</span><select value={type} onChange={e=>{setType(e.target.value);setShelfPage(0)}}><option value="">Todos</option>{[...new Set(books.map(b=>b.type))].map(t=><option key={t}>{t}</option>)}</select></label>{(search||year||type)&&<button className="clear" onClick={()=>{setSearch("");setYear("");setType("");setShelfPage(0)}}>Limpiar</button>}</div><div className="shelf-card"><div className="shelf-head"><span>COLECCIÓN GENERAL · A–Z</span><span>Estante {shelfPage+1} de {shelfCount}</span></div><div className="books">{visibleBooks.length===0?<p className="empty-note">La biblioteca está vacía. Los libros que agregues a D1 aparecerán aquí.</p>:visibleBooks.map(book=>{const match=filtered.includes(book),width=Math.max(36,Math.min(72,30+book.pages/12)),titleSize=Math.round(Math.max(8,Math.min(15,width/(Math.sqrt(book.title.length)*1.45)))*10)/10;return <div key={book.id} className="book-shell" style={{width}} onMouseEnter={()=>setSelected(book)}><button className={`book ${match?"match":"dim"} ${book.available<1?"borrowed":""}`} style={{width:"100%",background:book.color}} onClick={()=>{setSelected(book);setModal("detail")}}><span style={{fontSize:titleSize}}>{book.title}</span><small>{book.author.split(" ").slice(-1)}</small>{book.available<1&&<i>•</i>}<div className="hover-cover" style={{background:book.cover}}><b>{book.title}</b><small>{book.author}</small></div></button>{currentUser?.role==="admin"&&<div className="book-admin-actions"><button type="button" title="Editar libro" aria-label={`Editar ${book.title}`} onClick={e=>{e.stopPropagation();setEditingBook(book)}}>✎</button><button type="button" title="Eliminar libro" aria-label={`Eliminar ${book.title}`} onClick={e=>{e.stopPropagation();deleteBook(book)}}>⌫</button></div>}</div>})}</div><div className="wood"/></div><div className="shelf-pagination" aria-label="Cambiar de estante"><button disabled={shelfPage===0} onClick={()=>setShelfPage(page=>Math.max(0,page-1))} aria-label="Estante anterior">←</button><span>{shelfPage+1} / {shelfCount}</span><button disabled={shelfPage>=shelfCount-1} onClick={()=>setShelfPage(page=>Math.min(shelfCount-1,page+1))} aria-label="Estante siguiente">→</button></div></section>
       <aside className="right-panel">{selected?<><p className="eyebrow">LIBRO SELECCIONADO</p><div className="mini-cover" style={{background:selected.cover}}><span>{selected.title}</span></div><p className={`status ${selected.available?"yes":"no"}`}>{selected.available?`${selected.available} ${selected.available===1?"ejemplar disponible":"ejemplares disponibles"}`:"En préstamo"}</p><h2>{selected.title}</h2><p>{selected.author} · {selected.year}</p><div className="rating"><Stars rating={selected.rating}/><b>{selected.rating}</b></div><p className="synopsis">{selected.synopsis}</p><div className="facts"><span><b>{selected.pages}</b> páginas</span><span><b>{selected.type}</b> tipo</span></div><button className="primary wide" onClick={takeBook} disabled={!selected.available}>{selected.available?"Tomar este libro":"No disponible"}</button></>:<><p className="eyebrow">BIBLIOTECA VACÍA</p><h2>Aún no hay libros</h2><p className="synopsis">Cuando el administrador agregue el primer libro, aparecerá aquí.</p></>}</aside>
     </div>}
 
@@ -284,10 +465,11 @@ export default function Home(){
 
     {view==="subir"&&currentUser?.role==="admin"&&<section className="page upload-page"><button className="back" onClick={()=>setView("biblioteca")}>← Volver al estante</button><div className="upload-wrap"><div className="upload-copy"><p className="eyebrow">SUMAR A LA COLECCIÓN</p><h1>Todo libro nuevo abre una puerta</h1><p>Sube el archivo completo y registra sus datos. Las páginas se detectan automáticamente en PDF; en TXT se estiman según la cantidad de palabras.</p><blockquote>“Una biblioteca no se hace; crece.”<span>— Augustine Birrell</span></blockquote></div><form className="book-form" onSubmit={submitBook}><div className="drop"><span>＋</span><b>Archivo completo del libro</b><small>PDF o TXT · máximo 25 MB · páginas automáticas</small><input name="file" required type="file" accept=".pdf,.txt,text/plain,application/pdf" aria-label="Archivo del libro" onChange={e=>handleBookFile(e.target.files?.[0])}/>{fileInfo&&<em className={detectedPages>0?"file-ready":"file-error"}>{fileInfo}</em>}</div><div className="field full"><label>Título</label><input name="title" required maxLength={180} placeholder="Ej. El jardín secreto"/></div><div className="field"><label>Autor</label><input name="author" required maxLength={140} placeholder="Nombre del autor"/></div><div className="field"><label>Año</label><input name="year" required type="number" min="1" max={new Date().getFullYear()+1} placeholder="2024"/></div><div className="field"><label>Número de páginas</label><input value={detectedPages||""} readOnly placeholder="Se calcula al subir el archivo"/><input type="hidden" name="pages" value={detectedPages||""}/><small>{detectedPages>0?"Calculado automáticamente desde el documento":"Selecciona primero el archivo"}</small></div><div className="field"><label>Tipo</label><select name="type" required><option>Libro</option><option>Revista</option><option>Álbum ilustrado</option><option>Biografía</option><option>Otro</option></select></div><div className="field"><label>Ejemplares disponibles</label><input name="copies" required type="number" defaultValue="1" min="1" max="1000"/></div><div className="field full"><label>Sinopsis</label><textarea name="synopsis" required maxLength={3000} placeholder="Cuéntanos de qué trata, sin revelar demasiado…"/></div><button className="primary submit" disabled={bookUploading||detectedPages<1}>{bookUploading?"Guardando libro…":detectedPages<1?"Esperando cálculo de páginas…":"Guardar libro en la biblioteca"}</button></form></div></section>}
 
-    {view==="lector"&&owned&&<section className="reader"><div className="reader-bar"><button onClick={()=>setView("biblioteca")}>← Cerrar lector</button><div><b>{owned.title}</b><span>{owned.author}</span></div><button onClick={()=>flash("Marcador guardado")}>🔖</button></div><div className="reader-page"><span className="chapter">CAPÍTULO 3</span><h1>La puerta escondida</h1><p className="dropcap">A</p><p>quella mañana el aire olía a tierra húmeda. Había llovido durante la noche y cada hoja sostenía una gota brillante, como si el jardín hubiera decidido guardar pequeños espejos.</p><p>Avanzó despacio por el sendero. Sabía que los lugares secretos no se encuentran con prisa: aparecen cuando uno aprende a mirar lo que los demás pasan por alto.</p><p>Al fondo, detrás de la hiedra, algo metálico reflejó la luz. Extendió la mano y apartó las ramas con cuidado.</p><blockquote>Entonces comprendió que algunas puertas no protegen lo que esconden; esperan a la persona correcta.</blockquote></div><div className="reader-controls"><button>‹</button><div><input type="range" min="1" max={owned.pages} defaultValue={Math.round(owned.pages*.36)}/><span>Página {Math.round(owned.pages*.36)} de {owned.pages}</span></div><button>›</button></div></section>}
+    {view==="lector"&&owned&&<section className="reader"><div className="reader-bar"><button onClick={()=>setView("biblioteca")}>← Cerrar lector</button><div><b>{owned.title}</b><span>{owned.author}</span></div><span className="reader-autosave">Progreso automático</span></div><div className="reader-stage">{readerLoading?<div className="reader-message">Preparando el libro…</div>:readerError?<div className="reader-message error">{readerError}</div>:readerKind==="pdf"?<div className="reader-page pdf-reader-page"><canvas ref={readerCanvasRef}/></div>:readerKind==="text"?<div className="reader-page text-reader-page"><p>{readerTextPages[readerPage-1]||""}</p></div>:<div className="reader-message">Abriendo libro…</div>}</div><div className="reader-controls"><button onClick={()=>goReaderPage(readerPage-1)} disabled={readerPage<=1} aria-label="Página anterior">‹</button><div><input type="range" min="1" max={Math.max(1,readerTotalPages)} value={readerPage} onChange={e=>goReaderPage(Number(e.target.value))}/><span>Página {readerPage} de {Math.max(1,readerTotalPages)}</span></div><button onClick={()=>goReaderPage(readerPage+1)} disabled={readerPage>=readerTotalPages} aria-label="Página siguiente">›</button></div></section>}
 
     {modal==="detail"&&selected&&<div className="modal-back" onClick={()=>setModal(null)}><div className="book-modal" onClick={e=>e.stopPropagation()}><button className="close" onClick={()=>setModal(null)}>×</button><div className="modal-cover" style={{background:selected.cover}}><span>{selected.title}</span><small>{selected.author}</small></div><div className="modal-copy"><p className="eyebrow">{selected.type.toUpperCase()}</p><h2>{selected.title}</h2><p className="by">{selected.author} · {selected.year}</p><div className="rating"><Stars rating={selected.rating}/><b>{selected.rating}</b><span>({selected.readers.length*8+7} lecturas)</span></div><p>{selected.synopsis}</p><div className="meta-row"><span><b>{selected.pages}</b> páginas</span><span><b>{selected.available}/{selected.copies}</b> disponibles</span></div><button className="primary wide" disabled={!selected.available} onClick={takeBook}>{selected.available?"Tomar este libro":"En préstamo"}</button></div></div></div>}
-    {modal==="return"&&owned&&<div className="modal-back"><form className="return-modal" onSubmit={e=>{e.preventDefault();if(!returnRating){flash("Selecciona una calificación antes de devolver el libro");return}setOwned(null);setModal(null);setReturnRating(0);flash("Libro devuelto. ¡Gracias por dejar una huella!")}}><button type="button" className="close" onClick={()=>setModal(null)}>×</button><p className="eyebrow">ANTES DE DEVOLVERLO</p><h2>Deja una huella para quien sigue</h2><p>Tu respuesta ayudará a los próximos lectores de <b>{owned.title}</b>.</p><label>¿Qué cambió en el personaje principal?<textarea required placeholder="Escribe tu respuesta…"/></label><label>Propón una pregunta para futuros lectores<textarea required placeholder="¿Qué te gustaría preguntarles?"/></label><label>¿Cómo calificas esta lectura?<Stars rating={returnRating} onSelect={setReturnRating}/><small className="rating-help">{returnRating?`${returnRating} de 5 estrellas`:"Selecciona de 1 a 5 estrellas"}</small></label><button className="primary wide">Completar devolución</button></form></div>}
+    {modal==="return"&&owned&&<div className="modal-back"><form className="return-modal" onSubmit={returnBook}><button type="button" className="close" onClick={()=>setModal(null)}>×</button><p className="eyebrow">ANTES DE DEVOLVERLO</p><h2>Deja una huella para quien sigue</h2><p>Tu respuesta ayudará a los próximos lectores de <b>{owned.title}</b>.</p><label>¿Qué cambió en el personaje principal?<textarea required placeholder="Escribe tu respuesta…"/></label><label>Propón una pregunta para futuros lectores<textarea required placeholder="¿Qué te gustaría preguntarles?"/></label><label>¿Cómo calificas esta lectura?<Stars rating={returnRating} onSelect={setReturnRating}/><small className="rating-help">{returnRating?`${returnRating} de 5 estrellas`:"Selecciona de 1 a 5 estrellas"}</small></label><button className="primary wide">Completar devolución</button></form></div>}
+    {editingBook&&<div className="modal-back" onClick={()=>!bookAdminBusy&&setEditingBook(null)}><form className="profile-modal book-edit-modal" onClick={e=>e.stopPropagation()} onSubmit={saveBookEdit}><button type="button" className="close" disabled={bookAdminBusy} onClick={()=>setEditingBook(null)}>×</button><p className="eyebrow">ADMINISTRAR LIBRO</p><h2>Editar ficha</h2><p className="edit-pages-note">{editingBook.pages} páginas · calculadas desde el archivo</p><label>Título<input name="title" required maxLength={180} defaultValue={editingBook.title}/></label><label>Autor<input name="author" required maxLength={140} defaultValue={editingBook.author}/></label><div className="edit-book-row"><label>Año<input name="year" required type="number" min="1" max={new Date().getFullYear()+1} defaultValue={editingBook.year}/></label><label>Ejemplares<input name="copies" required type="number" min="1" max="1000" defaultValue={editingBook.copies}/></label></div><label>Tipo<select name="type" defaultValue={editingBook.type}><option>Libro</option><option>Revista</option><option>Álbum ilustrado</option><option>Biografía</option><option>Otro</option></select></label><label>Sinopsis<textarea name="synopsis" required maxLength={3000} defaultValue={editingBook.synopsis}/></label><button className="primary wide" disabled={bookAdminBusy}>{bookAdminBusy?"Guardando…":"Guardar cambios"}</button><button type="button" className="danger-link" disabled={bookAdminBusy} onClick={()=>deleteBook(editingBook)}>Eliminar libro</button></form></div>}
     {modal==="profile"&&currentUser&&<div className="modal-back" onClick={()=>setModal(null)}><form className="profile-modal" onClick={e=>e.stopPropagation()} onSubmit={saveProfile}><button type="button" className="close" onClick={()=>setModal(null)}>×</button><p className="eyebrow">MI PERFIL</p><div className="profile-photo-wrap"><Avatar name={currentName} color="#cf915f" src={currentUser.photoUrl}/><label className="photo-button">{photoUploading?"Subiendo foto…":"Cambiar foto"}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={photoUploading} onChange={e=>{uploadProfilePhoto(e.target.files?.[0]);e.currentTarget.value=""}}/></label><small>JPG, PNG o WEBP · máximo 4 MB</small></div><h2>{currentUser.name}</h2><p className="profile-role">{currentUser.role==="admin"?"Administrador":"Lector"}</p><label>Correo electrónico<input value={currentUser.email} readOnly/></label><label>Sobre mí<textarea name="description" maxLength={320} defaultValue={currentUser.description} placeholder="Cuéntale a la comunidad un poco sobre ti…"/></label><div className="stats"><span><b>{currentUser.pagesRead.toLocaleString("es-MX")}</b> páginas leídas</span><span><b>{currentUser.role==="admin"?"Administrador":"Lector"}</b> rol</span></div><button className="primary wide" disabled={profileSaving}>{profileSaving?"Guardando…":"Guardar perfil"}</button></form></div>}
     {authView&&<div className="modal-back" onClick={()=>setAuthView(null)}><form className="auth-modal" onClick={e=>e.stopPropagation()} onSubmit={submitAuth}><button type="button" className="close" onClick={()=>setAuthView(null)}>×</button><div className="auth-mark">B</div>{authView==="login"&&<><p className="eyebrow">ACCESO DE LECTORES</p><h2>Iniciar sesión</h2><p>Continúa con tus préstamos, lecturas y conversaciones.</p><label>Correo electrónico<input name="email" required type="email" placeholder="nombre@correo.com" autoComplete="email"/></label><label>Contraseña<input name="password" required type="password" placeholder="Tu contraseña" autoComplete="current-password"/></label><button className="forgot" type="button" onClick={()=>setAuthView("recover")}>Olvidé mi contraseña</button><button className="primary wide" disabled={authSubmitting}>{authSubmitting?"Entrando…":"Iniciar sesión"}</button><p className="auth-switch">¿Aún no tienes cuenta? <button type="button" onClick={()=>setAuthView("signup")}>Regístrate</button></p></>}{authView==="signup"&&<><p className="eyebrow">NUEVA CUENTA</p><h2>Crear una cuenta</h2><p>Regístrate para tomar libros y participar en la comunidad.</p><label>Nombre<input name="name" required minLength={2} maxLength={80} placeholder="Tu nombre" autoComplete="name"/></label><label>Correo electrónico<input name="email" required type="email" placeholder="nombre@correo.com" autoComplete="email"/></label><label>Contraseña<input name="password" required type="password" minLength={8} maxLength={128} placeholder="Mínimo 8 caracteres" autoComplete="new-password"/></label><label>Confirmar contraseña<input name="confirmPassword" required type="password" minLength={8} maxLength={128} placeholder="Repite tu contraseña" autoComplete="new-password"/></label><label>Código de administrador <small>opcional, solo para la configuración inicial</small><input name="adminCode" type="password" placeholder="Déjalo vacío si eres lector" autoComplete="off"/></label><button className="primary wide" disabled={authSubmitting}>{authSubmitting?"Creando…":"Crear cuenta"}</button><p className="auth-switch">¿Ya tienes cuenta? <button type="button" onClick={()=>setAuthView("login")}>Inicia sesión</button></p></>}{authView==="recover"&&<><p className="eyebrow">RECUPERAR ACCESO</p><h2>Recuperación de contraseña</h2><div className="recovery-success"><b>Recuperación por correo aún no configurada</b><p>Por ahora solicita al administrador que restablezca tu acceso. No enviaremos un correo ficticio.</p><button type="button" className="secondary wide" onClick={()=>setAuthView("login")}>Volver a iniciar sesión</button></div></>}</form></div>}
     {toast&&<div className="toast">✓ {toast}</div>}
