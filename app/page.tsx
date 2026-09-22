@@ -304,6 +304,7 @@ export default function Home(){
   },[currentUser?.id]);
   const toggleReaction=async(targetType:ReactionTargetType,targetId:string|number,emoji:string)=>{
     if(!currentUser){setAuthView("login");flash("Inicia sesión para reaccionar.");return null}
+    if(currentUser.approvalStatus!=="approved"){setView("notificaciones");flash("Tu cuenta debe estar aprobada para reaccionar.");return null}
     const busyKey=reactionKey(targetType,targetId,emoji);
     if(reactionBusy.includes(busyKey))return null;
     setReactionBusy(current=>[...current,busyKey]);
@@ -679,8 +680,8 @@ export default function Home(){
       flash(error instanceof Error?error.message:"No se pudo devolver el libro.");
     }
   };
-  const publish=async()=>{if(!currentUser){setAuthView("login");flash("Inicia sesión para publicar.");return}const text=draft.trim();if(!text||publishing)return;setPublishing(true);try{const response=await fetch("/api/posts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,book:postBook})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar la publicación");setPosts(current=>[payload.post,...current]);setDraft("");flash("Tu reflexión ya está en la conversación.")}catch(error){flash(error instanceof Error?`No se pudo publicar: ${error.message}`:"No se pudo publicar la reflexión.")}finally{setPublishing(false)}};
-  const submitReply=(postId:number)=>{if(!currentUser){setAuthView("login");flash("Inicia sesión para responder.");return}if(!replyDrafts[postId]?.trim())return;setPosts(current=>current.map(post=>post.id===postId?{...post,replies:post.replies+1}:post));setReplyDrafts(current=>({...current,[postId]:""}));flash("Respuesta publicada")};
+  const publish=async()=>{if(!currentUser){setAuthView("login");flash("Inicia sesión para publicar.");return}if(currentUser.approvalStatus!=="approved"){setView("notificaciones");flash("Tu cuenta debe estar aprobada para publicar.");return}const text=draft.trim();if(!text||publishing)return;setPublishing(true);try{const response=await fetch("/api/posts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,book:postBook})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar la publicación");setPosts(current=>[payload.post,...current]);setDraft("");flash("Tu reflexión ya está en la conversación.")}catch(error){flash(error instanceof Error?`No se pudo publicar: ${error.message}`:"No se pudo publicar la reflexión.")}finally{setPublishing(false)}};
+  const submitReply=(postId:number)=>{if(!currentUser){setAuthView("login");flash("Inicia sesión para responder.");return}if(currentUser.approvalStatus!=="approved"){setView("notificaciones");flash("Tu cuenta debe estar aprobada para responder.");return}if(!replyDrafts[postId]?.trim())return;setPosts(current=>current.map(post=>post.id===postId?{...post,replies:post.replies+1}:post));setReplyDrafts(current=>({...current,[postId]:""}));flash("Respuesta publicada")};
   const toggleProfileReaction=async(name:string,emoji:string)=>{const active=await toggleReaction("profile",name,emoji);if(active!==null)flash(active?`Reaccionaste al perfil de ${name}`:`Quitaste tu reacción a ${name}`)};
   const handleBookFile=async(file?:File)=>{
     setDetectedPages(0);
