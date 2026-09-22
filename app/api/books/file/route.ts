@@ -36,7 +36,7 @@ export async function GET(request: Request) {
       .limit(1);
 
     if (!book?.fileKey) {
-      return new Response("Este libro no tiene archivo asociado.", { status: 404 });
+      return new Response("Este libro no tiene contenido de lectura asociado.", { status: 404 });
     }
 
     if (session.role !== "admin") {
@@ -59,7 +59,7 @@ export async function GET(request: Request) {
 
     const object = await runtimeEnv().BOOK_FILES.get(book.fileKey);
     if (!object) {
-      return new Response("No encontramos el archivo original del libro.", { status: 404 });
+      return new Response("No encontramos el contenido reconstruido del libro.", { status: 404 });
     }
 
     const headers = new Headers();
