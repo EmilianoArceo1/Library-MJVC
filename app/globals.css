@@ -404,3 +404,80 @@
   0%{opacity:.45;transform:perspective(1400px) rotateY(5deg) translateX(-10px)}
   100%{opacity:1;transform:perspective(1400px) rotateY(0) translateX(0)}
 }
+
+
+/* Final book-reader fitting and page-turn refinements */
+.reader-cover>*:not(.reader-cover-art):not(.reader-cover-kicker){position:relative;z-index:2}
+.reader-cover-kicker{
+  position:absolute!important;
+  top:34px;
+  left:38px;
+  right:38px;
+  z-index:3;
+  margin:0!important;
+}
+.reader-cover strong{position:relative;z-index:3}
+.reader-cover small,.reader-cover i{position:relative;z-index:3}
+
+.reader-sheet-inner{
+  overflow:hidden!important;
+  scrollbar-width:none!important;
+}
+.reader-sheet-inner::-webkit-scrollbar{display:none!important}
+.reader-sheet-inner p{
+  orphans:2;
+  widows:2;
+}
+.reader-sheet-inner[data-fit-scale]{
+  transition:font-size .08s linear;
+}
+
+.reader-spread{
+  position:relative;
+  perspective:1800px;
+  isolation:isolate;
+}
+.reader-spread.turn-next,
+.reader-spread.turn-prev{
+  animation:none!important;
+}
+.reader-page-flip{
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:calc((100% - 14px)/2);
+  z-index:30;
+  pointer-events:none;
+  background:
+    linear-gradient(90deg,rgba(92,67,41,.08),transparent 14%,transparent 88%,rgba(92,67,41,.14)),
+    #fbf6ea;
+  box-shadow:0 8px 24px #24170e33;
+  backface-visibility:hidden;
+}
+.reader-page-flip.next{
+  left:calc(50% + 7px);
+  border-radius:2px 16px 16px 2px;
+  transform-origin:left center;
+  animation:physicalPageNext .62s cubic-bezier(.2,.72,.22,1) both;
+}
+.reader-page-flip.prev{
+  right:calc(50% + 7px);
+  border-radius:16px 2px 2px 16px;
+  transform-origin:right center;
+  animation:physicalPagePrev .62s cubic-bezier(.2,.72,.22,1) both;
+}
+@keyframes physicalPageNext{
+  0%{transform:rotateY(0deg);opacity:.98;filter:brightness(1)}
+  45%{filter:brightness(.88);box-shadow:-14px 12px 30px #0005}
+  99%{opacity:.96}
+  100%{transform:rotateY(-179deg);opacity:0;filter:brightness(.96)}
+}
+@keyframes physicalPagePrev{
+  0%{transform:rotateY(0deg);opacity:.98;filter:brightness(1)}
+  45%{filter:brightness(.88);box-shadow:14px 12px 30px #0005}
+  99%{opacity:.96}
+  100%{transform:rotateY(179deg);opacity:0;filter:brightness(.96)}
+}
+@media(prefers-reduced-motion:reduce){
+  .reader-page-flip{display:none}
+}
