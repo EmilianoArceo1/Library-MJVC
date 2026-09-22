@@ -1,7 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getDb } from "../../../db";
-import { books, users } from "../../../db/schema";
-import { eq } from "drizzle-orm";
+import { books } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
 import {
   createNotification,
