@@ -144,11 +144,12 @@ export default function ManagementPanel({
     decision: "approved" | "rejected",
     subject: string,
   ) => {
-    const message =
-      window.prompt(
-        `${decision === "approved" ? "Aprobar" : "Rechazar"} ${subject}.\n\nMensaje para el usuario (opcional):`,
-        "",
-      ) ?? "";
+    const promptResult = window.prompt(
+      `${decision === "approved" ? "Aprobar" : "Rechazar"} ${subject}.\n\nMensaje para el usuario (opcional):`,
+      "",
+    );
+    if (promptResult === null) return;
+    const message = promptResult.trim();
     const key = `${type}:${id}:${decision}`;
     setBusyKey(key);
     try {
