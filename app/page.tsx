@@ -329,6 +329,9 @@ export default function Home(){
     setReaderError("");
     setReaderPages([]);
     setReaderZoom(1);
+    setReaderClosing(false);
+    setReaderPendingPage(null);
+    setReaderAnimating(false);
     fetch(`/api/books/file?id=${owned.id}`)
       .then(async response=>{
         if(!response.ok)throw new Error(await response.text()||"No se pudo abrir el libro");
@@ -362,15 +365,17 @@ export default function Home(){
     return ()=>clearTimeout(timer);
   },[view,loanId,readerPage,readerTotalPages]);
   const lastSpreadStart=readerTotalPages<1?0:(readerTotalPages%2===0?Math.max(1,readerTotalPages-1):readerTotalPages);
+  const backCoverPage=readerTotalPages+1;
   const startReaderTurn=(direction:"next"|"prev")=>{
-    if(readerAnimating||readerTotalPages<1)return;
+    if(readerAnimating||readerClosing||readerTotalPages<1)return;
     const target=direction==="next"
-      ?(readerPage===0?1:Math.min(lastSpreadStart,readerPage+2))
-      :(readerPage<=1?0:Math.max(1,readerPage-2));
+      ?(readerPage===0?1:readerPage===lastSpreadStart?backCoverPage:readerPage===backCoverPage?backCoverPage:Math.min(lastSpreadStart,readerPage+2))
+      :(readerPage===backCoverPage?lastSpreadStart:readerPage<=1?0:Math.max(1,readerPage-2));
     if(target===readerPage)return;
     setReaderTurn(direction);
     setReaderPendingPage(target);
     setReaderAnimating(true);
+    setReaderClosing(false);
     if(readerTurnTimerRef.current!==null)window.clearTimeout(readerTurnTimerRef.current);
     readerTurnTimerRef.current=window.setTimeout(()=>{
       setReaderPage(target);
@@ -381,14 +386,17 @@ export default function Home(){
   };
   const previousReaderSpread=()=>startReaderTurn("prev");
   const nextReaderSpread=()=>startReaderTurn("next");
-  const preloadPrevStart=readerPage>1?Math.max(1,readerPage-2):null;
-  const preloadNextStart=readerTotalPages<1?null:(readerPage===0?1:(readerPage<lastSpreadStart?Math.min(lastSpreadStart,readerPage+2):null));
+  const preloadPrevStart=readerPage===backCoverPage?lastSpreadStart:readerPage>1?Math.max(1,readerPage-2):null;
+  const preloadNextStart=readerTotalPages<1?null:(readerPage===0?1:(readerPage>0&&readerPage<lastSpreadStart?Math.min(lastSpreadStart,readerPage+2):null));
   useEffect(()=>{
-    return ()=>{if(readerTurnTimerRef.current!==null)window.clearTimeout(readerTurnTimerRef.current)};
+    return ()=>{
+      if(readerTurnTimerRef.current!==null)window.clearTimeout(readerTurnTimerRef.current);
+      if(readerFinishTimerRef.current!==null)window.clearTimeout(readerFinishTimerRef.current);
+    };
   },[]);
   useEffect(()=>{
     if(view!=="lector")return;
-    const starts=[preloadPrevStart,preloadNextStart].filter((value):value is number=>typeof value==="number"&&value>0);
+    const starts=[preloadPrevStart,preloadNextStart].filter((value):value is number=>typeof value==="number"&&value>0&&value<=lastSpreadStart);
     for(const start of starts){
       for(const page of [readerPages[start-1],readerPages[start]]){
         if(!page?.artwork)continue;
@@ -398,7 +406,7 @@ export default function Home(){
         image.decode?.().catch(()=>undefined);
       }
     }
-  },[view,readerPage,preloadPrevStart,preloadNextStart,readerPages]);
+  },[view,readerPage,preloadPrevStart,preloadNextStart,readerPages,lastSpreadStart]);
   useEffect(()=>{
     if(view!=="lector")return;
     const onKeyDown=(event:KeyboardEvent)=>{
@@ -407,7 +415,7 @@ export default function Home(){
     };
     window.addEventListener("keydown",onKeyDown);
     return ()=>window.removeEventListener("keydown",onKeyDown);
-  },[view,readerPage,readerAnimating,readerTotalPages]);
+  },[view,readerPage,readerAnimating,readerClosing,readerTotalPages]);
   const changeReaderZoom=(delta:number)=>setReaderZoom(current=>Math.min(2,Math.max(.7,Math.round((current+delta)*10)/10)));
   const clampReaderZoom=(value:number)=>Math.min(2,Math.max(.7,Math.round(value*20)/20));
   const pinchDistance=()=>{
@@ -460,6 +468,24 @@ export default function Home(){
       setReturnQuestionsLoading(false);
     }
   };
+  useEffect(()=>{
+    if(view!=="lector"||readerPage!==backCoverPage||readerAnimating||modal==="return")return;
+    setReaderClosing(false);
+    if(readerFinishTimerRef.current!==null)window.clearTimeout(readerFinishTimerRef.current);
+    const closeTimer=window.setTimeout(()=>setReaderClosing(true),180);
+    readerFinishTimerRef.current=window.setTimeout(()=>{
+      setReaderClosing(false);
+      openReturnModal();
+      readerFinishTimerRef.current=null;
+    },1180);
+    return ()=>{
+      window.clearTimeout(closeTimer);
+      if(readerFinishTimerRef.current!==null){
+        window.clearTimeout(readerFinishTimerRef.current);
+        readerFinishTimerRef.current=null;
+      }
+    };
+  },[view,readerPage,backCoverPage,readerAnimating,modal,owned?.id]);
   const returnBook=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
     if(!owned||!loanId)return;
@@ -477,7 +503,7 @@ export default function Home(){
       setBooks(current=>current.map(book=>book.id===owned.id?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||book.reads}:book));
       setSelected(current=>current?.id===owned.id?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||current.reads}:current);
       setCurrentUser(user=>user?{...user,pagesRead:user.pagesRead+owned.pages}:user);
-      setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);
+      setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);setReaderClosing(false);setReaderAnimating(false);setReaderPendingPage(null);
       flash("Libro devuelto. Tu calificación y aportaciones quedaron guardadas.");
     }catch(error){
       flash(error instanceof Error?error.message:"No se pudo devolver el libro.");
