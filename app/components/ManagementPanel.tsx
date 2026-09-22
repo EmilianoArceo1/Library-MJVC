@@ -154,7 +154,7 @@ export default function ManagementPanel({
       if (!response.ok) throw new Error(payload.error || "No se pudo guardar el dictamen");
       setNotice(`${subject}: decisión guardada por ${payload.actor}.`);
       await load();
-      if (type === "book" && decision === "approved") onCatalogChanged?.();
+      onCatalogChanged?.();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "No se pudo guardar la decisión.");
     } finally {
