@@ -10,7 +10,7 @@ type SessionUser = { id:string; name:string; email:string; role:"reader"|"admin"
 type ReaderQuestion = { id:number; body:string; user:string };
 type ReconstructedPage = { heading:string|null; paragraphs:string[]; artwork?:string|null };
 type ReconstructedBook = { version:1; source:"pdf"|"txt"; pages:ReconstructedPage[] };
-const pageFitCache=new WeakMap<ReconstructedPage,number>();
+const pageFitCache=new WeakMap<ReconstructedPage,Map<string,number>>();
 
 const initialPosts: ForumPost[] = [];
 
@@ -21,24 +21,36 @@ function Avatar({name,color,small=false,src=null}:{name:string;color:string;smal
 function Stars({rating,onSelect}:{rating:number;onSelect?:(rating:number)=>void}){return <span className={`stars ${onSelect?"interactive":""}`} aria-label={`${rating} de 5`}>{[1,2,3,4,5].map(n=>onSelect?<button type="button" key={n} className={n<=rating?"on":""} onClick={()=>onSelect(n)} aria-label={`${n} estrellas`}>★</button>:<span key={n} className={n<=Math.round(rating)?"on":""}>★</span>)}</span>}
 function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumber?:number;side:"left"|"right";zoom:number}){
   const contentRef=useRef<HTMLDivElement|null>(null);
-  const [fitScale,setFitScale]=useState(()=>page?pageFitCache.get(page)??1:1);
+  const [fitScale,setFitScale]=useState(1);
   useLayoutEffect(()=>{
     if(!page)return;
-    const cached=pageFitCache.get(page);
-    if(cached){
-      setFitScale(cached);
-      return;
-    }
     const node=contentRef.current;
     if(!node)return;
-    let scale=1;
-    node.style.fontSize="1em";
-    while(scale>.5&&(node.scrollHeight>node.clientHeight+2||node.scrollWidth>node.clientWidth+2)){
-      scale=Math.max(.5,Math.round((scale-.03)*100)/100);
-      node.style.fontSize=`${scale}em`;
-    }
-    pageFitCache.set(page,scale);
-    setFitScale(scale);
+    const fit=()=>{
+      const width=Math.max(1,Math.round(node.clientWidth));
+      const height=Math.max(1,Math.round(node.clientHeight));
+      const cacheKey=`${width}x${height}`;
+      const cached=pageFitCache.get(page)?.get(cacheKey);
+      if(cached){
+        node.style.fontSize=`${cached}em`;
+        setFitScale(cached);
+        return;
+      }
+      let scale=1;
+      node.style.fontSize="1em";
+      while(scale>.34&&(node.scrollHeight>node.clientHeight-2||node.scrollWidth>node.clientWidth-2)){
+        scale=Math.max(.34,Math.round((scale-.025)*1000)/1000);
+        node.style.fontSize=`${scale}em`;
+      }
+      let sizes=pageFitCache.get(page);
+      if(!sizes){sizes=new Map<string,number>();pageFitCache.set(page,sizes)}
+      sizes.set(cacheKey,scale);
+      setFitScale(scale);
+    };
+    fit();
+    const observer=new ResizeObserver(fit);
+    observer.observe(node);
+    return ()=>observer.disconnect();
   },[page]);
   return <article className={`reader-sheet ${side} ${!page?"blank":""} ${page?.heading?"has-heading":""}`} style={{fontSize:`${zoom}em`}}>{page?<><div ref={contentRef} className="reader-sheet-inner" style={{fontSize:`${fitScale}em`}}>{page.artwork&&<img className="reader-artwork" style={{maxHeight:`${210*fitScale}px`}} src={page.artwork} alt="Ilustración recuperada del documento original"/>}{page.heading&&<h3>{page.heading}</h3>}{page.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div><span className="reader-page-number">{pageNumber}</span></>:<div className="reader-sheet-inner reader-blank-page"/>}</article>
 }
@@ -58,15 +70,24 @@ function AnimatedReaderSpread({pages,currentStart,targetStart,direction}:{pages:
   return <div className={`reader-spread reader-spread-turning ${direction}`}><BookSheet page={baseLeft} pageNumber={baseLeftNumber} side="left" zoom={1}/><div className="reader-gutter"/><BookSheet page={baseRight} pageNumber={baseRightNumber<=pages.length?baseRightNumber:undefined} side="right" zoom={1}/><div className={`reader-turn-leaf ${direction}`} aria-hidden="true"><div className="reader-turn-face front"><BookSheet page={frontPage} pageNumber={frontNumber} side={forward?"right":"left"} zoom={1}/></div><div className="reader-turn-face back"><BookSheet page={backPage} pageNumber={backNumber<=pages.length?backNumber:undefined} side={forward?"left":"right"} zoom={1}/></div></div></div>
 }
 
+function ReaderInsideBackCover({side="right"}:{side?:"left"|"right"}){
+  return <article className={`reader-sheet reader-inside-cover ${side}`}><div className="reader-sheet-inner"><div className="reader-inside-cover-mark">Biblioteca virtual MJVC Mérida</div></div></article>
+}
+function ReaderEndTurn({pages,start}:{pages:ReconstructedPage[];start:number}){
+  const frontPage=pages[start];
+  const frontNumber=start+1<=pages.length?start+1:undefined;
+  return <div className="reader-spread reader-spread-turning next reader-ending-spread"><BookSheet page={pages[start-1]} pageNumber={start} side="left" zoom={1}/><div className="reader-gutter"/><ReaderInsideBackCover/><div className="reader-turn-leaf next" aria-hidden="true"><div className="reader-turn-face front"><BookSheet page={frontPage} pageNumber={frontNumber} side="right" zoom={1}/></div><div className="reader-turn-face back"><ReaderInsideBackCover side="left"/></div></div></div>
+}
+
 export default function Home(){
   const [view,setView]=useState<View>("biblioteca"),[books,setBooks]=useState<Book[]>([]),[people,setPeople]=useState<Reader[]>([]),[selected,setSelected]=useState<Book|null>(null),[search,setSearch]=useState(""),[year,setYear]=useState(""),[type,setType]=useState("");
   const readBooks=books;
   const [owned,setOwned]=useState<Book|null>(null),[toast,setToast]=useState(""),[modal,setModal]=useState<"detail"|"return"|"profile"|null>(null),[posts,setPosts]=useState<ForumPost[]>(initialPosts),[draft,setDraft]=useState(""),[publishing,setPublishing]=useState(false),[postBook,setPostBook]=useState(""),[liked,setLiked]=useState<number[]>([]),[reactionCounts,setReactionCounts]=useState<Record<string,number>>({}),[reactionBusy,setReactionBusy]=useState<string[]>([]);
   const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookPackage,setBookPackage]=useState(""),[bookUploading,setBookUploading]=useState(false);
   const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false);
-  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next"),[readerPendingPage,setReaderPendingPage]=useState<number|null>(null),[readerAnimating,setReaderAnimating]=useState(false);
+  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next"),[readerPendingPage,setReaderPendingPage]=useState<number|null>(null),[readerAnimating,setReaderAnimating]=useState(false),[readerClosing,setReaderClosing]=useState(false);
   const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false),[returnQuestions,setReturnQuestions]=useState<ReaderQuestion[]>([]),[returnQuestionsLoading,setReturnQuestionsLoading]=useState(false),[returnExtraQuestions,setReturnExtraQuestions]=useState(0);
-  const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null);
+  const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null),readerFinishTimerRef=useRef<number|null>(null);
   const [shelfPage,setShelfPage]=useState(0);
   const sortedBooks=useMemo(()=>[...books].sort((a,b)=>a.title.localeCompare(b.title,"es",{sensitivity:"base"})),[books]);
   const filtered=useMemo(()=>sortedBooks.filter(b=>(!search||`${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()))&&(!year||String(b.year)===year)&&(!type||b.type===type)),[search,year,type,sortedBooks]);
