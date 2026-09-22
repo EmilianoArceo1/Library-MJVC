@@ -34,7 +34,7 @@ function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumb
       const paddingY=(parseFloat(styles.paddingTop)||0)+(parseFloat(styles.paddingBottom)||0);
       const availableWidth=Math.max(1,node.clientWidth-paddingX);
       const availableHeight=Math.max(1,node.clientHeight-paddingY);
-      const cacheKey=`${Math.round(availableWidth)}x${Math.round(availableHeight)}`;
+      const cacheKey=`v2:${Math.round(availableWidth)}x${Math.round(availableHeight)}`;
       const cached=pageFitCache.get(page)?.get(cacheKey);
       if(cached){
         node.style.fontSize=`${cached}em`;
@@ -51,8 +51,10 @@ function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumb
           rect.width<=availableWidth+1;
       };
 
+      const wordCount=page.paragraphs.join(" ").trim().split(/\s+/).filter(Boolean).length;
+      const maxScale=wordCount<140?2.7:wordCount<260?2.5:wordCount<420?2.3:2.15;
       let low=.46;
-      let high=1.68;
+      let high=maxScale;
       let best=low;
       for(let attempt=0;attempt<15;attempt++){
         const candidate=(low+high)/2;
@@ -64,7 +66,7 @@ function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumb
         }
       }
 
-      const scale=Math.max(.46,Math.min(1.68,Math.floor(best*.985*1000)/1000));
+      const scale=Math.max(.46,Math.min(maxScale,Math.floor(best*.995*1000)/1000));
       node.style.fontSize=`${scale}em`;
       let sizes=pageFitCache.get(page);
       if(!sizes){sizes=new Map<string,number>();pageFitCache.set(page,sizes)}
