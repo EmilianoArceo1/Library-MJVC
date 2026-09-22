@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { reactions, users } from "../../../db/schema";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { reactions } from "../../../db/schema";
+import { getSessionUser } from "../../auth-server";
 
 type ReactionTargetType = "post" | "profile";
 
@@ -11,18 +11,6 @@ function reactionKey(
   emoji: string,
 ): string {
   return `${targetType}:${targetId}:${emoji}`;
-}
-
-async function getReactionIdentity() {
-  const authenticated = await getChatGPTUser();
-
-  return {
-    id: authenticated?.userId ?? "demo-amelia",
-    name:
-      authenticated?.fullName ??
-      authenticated?.displayName ??
-      "Amelia",
-  };
 }
 
 function errorMessage(error: unknown): string {
@@ -40,10 +28,10 @@ function errorMessage(error: unknown): string {
   return message;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const db = getDb();
-    const identity = await getReactionIdentity();
+    const identity = await getSessionUser(request);
     const rows = await db.select().from(reactions);
 
     const counts: Record<string, number> = {};
@@ -58,7 +46,7 @@ export async function GET() {
       const key = reactionKey(targetType, row.targetId, row.emoji);
       counts[key] = (counts[key] ?? 0) + 1;
 
-      if (row.userId === identity.id) {
+      if (identity && row.userId === identity.id) {
         mine.push({
           targetType,
           targetId: row.targetId,
@@ -75,6 +63,14 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const identity = await getSessionUser(request);
+    if (!identity) {
+      return Response.json(
+        { error: "Inicia sesión para reaccionar." },
+        { status: 401 },
+      );
+    }
+
     const payload = (await request.json()) as {
       targetType?: string;
       targetId?: string | number;
@@ -107,18 +103,6 @@ export async function POST(request: Request) {
     }
 
     const db = getDb();
-    const identity = await getReactionIdentity();
-
-    await db
-      .insert(users)
-      .values({
-        id: identity.id,
-        name: identity.name,
-      })
-      .onConflictDoUpdate({
-        target: users.id,
-        set: { name: identity.name },
-      });
 
     const match = and(
       eq(reactions.userId, identity.id),
