@@ -375,3 +375,15 @@
   .reader-side-nav{width:38px;height:38px}
   .reader-book-footer small{display:none}
 }
+
+.reader-cover-art{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  opacity:.34;
+  mix-blend-mode:multiply;
+  filter:sepia(.08) contrast(.92) saturate(.75);
+}
+.reader-cover>*:not(.reader-cover-art){position:relative;z-index:2}
