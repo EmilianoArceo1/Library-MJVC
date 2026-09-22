@@ -4,6 +4,7 @@ import { type FormEvent, type PointerEvent as ReactPointerEvent, type WheelEvent
 
 type View = "biblioteca" | "comunidad" | "foro" | "subir" | "lector";
 type ReaderMode = "book" | "continuous";
+type Theme = "light" | "dark";
 type Book = { id:number; title:string; author:string; year:number; pages:number; type:string; color:string; cover:string; synopsis:string; rating:number; available:number; copies:number; reads:number; readers:string[]; progress?:number };
 type Reader = { id:string; name:string; pages:number; role:"reader"|"admin"; now:string|null; color:string; photoUrl:string|null };
 type ForumPost = { id:number; user:string; book:string; time:string; text:string; likes:number; replies:number; color:string; photoUrl?:string|null };
@@ -108,7 +109,7 @@ export default function Home(){
   const readBooks=books;
   const [owned,setOwned]=useState<Book|null>(null),[toast,setToast]=useState(""),[modal,setModal]=useState<"detail"|"return"|"profile"|null>(null),[posts,setPosts]=useState<ForumPost[]>(initialPosts),[draft,setDraft]=useState(""),[publishing,setPublishing]=useState(false),[postBook,setPostBook]=useState(""),[liked,setLiked]=useState<number[]>([]),[reactionCounts,setReactionCounts]=useState<Record<string,number>>({}),[reactionBusy,setReactionBusy]=useState<string[]>([]);
   const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookPackage,setBookPackage]=useState(""),[bookUploading,setBookUploading]=useState(false);
-  const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false);
+  const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false),[theme,setTheme]=useState<Theme>("light"),[themeSaving,setThemeSaving]=useState(false);
   const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerMode,setReaderMode]=useState<ReaderMode>("book"),[continuousFontSize,setContinuousFontSize]=useState(27),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next"),[readerPendingPage,setReaderPendingPage]=useState<number|null>(null),[readerAnimating,setReaderAnimating]=useState(false),[readerClosing,setReaderClosing]=useState(false),[readerReturnVisible,setReaderReturnVisible]=useState(false);
   const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false),[returnQuestions,setReturnQuestions]=useState<ReaderQuestion[]>([]),[returnQuestionsLoading,setReturnQuestionsLoading]=useState(false),[returnExtraQuestions,setReturnExtraQuestions]=useState(0);
   const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null),readerFinishTimerRef=useRef<number|null>(null),readerFinishShownRef=useRef(false),readerContinuousRef=useRef<HTMLDivElement|null>(null),continuousProgressTimerRef=useRef<number|null>(null);
@@ -131,6 +132,53 @@ export default function Home(){
       .finally(()=>{if(!cancelled)setAuthLoading(false)});
     return ()=>{cancelled=true};
   },[]);
+  useEffect(()=>{
+    const root=document.documentElement;
+    root.dataset.theme=theme;
+    root.style.colorScheme=theme;
+  },[theme]);
+  useEffect(()=>{
+    let cancelled=false;
+    const cacheKey=currentUser?.id?`mjvc-theme:${currentUser.id}`:"mjvc-theme:guest";
+    const cached=window.localStorage.getItem(cacheKey);
+    if(cached==="light"||cached==="dark")setTheme(cached);
+    if(!currentUser)return ()=>{cancelled=true};
+    fetch("/api/preferences")
+      .then(async response=>{
+        const payload=await response.json();
+        if(!response.ok)throw new Error(payload.error||"No se pudieron cargar tus preferencias");
+        return payload;
+      })
+      .then(payload=>{
+        if(cancelled)return;
+        const savedTheme:Theme=payload.theme==="dark"?"dark":"light";
+        setTheme(savedTheme);
+        window.localStorage.setItem(cacheKey,savedTheme);
+      })
+      .catch(error=>console.error("No se pudo cargar el tema guardado",error));
+    return ()=>{cancelled=true};
+  },[currentUser?.id]);
+  const toggleTheme=async()=>{
+    if(themeSaving)return;
+    const previous=theme;
+    const next:Theme=theme==="dark"?"light":"dark";
+    const cacheKey=currentUser?.id?`mjvc-theme:${currentUser.id}`:"mjvc-theme:guest";
+    setTheme(next);
+    window.localStorage.setItem(cacheKey,next);
+    if(!currentUser)return;
+    setThemeSaving(true);
+    try{
+      const response=await fetch("/api/preferences",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({theme:next})});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.error||"No se pudo guardar el tema");
+    }catch(error){
+      setTheme(previous);
+      window.localStorage.setItem(cacheKey,previous);
+      flash(error instanceof Error?error.message:"No se pudo guardar el tema.");
+    }finally{
+      setThemeSaving(false);
+    }
+  };
   useEffect(()=>{
     let cancelled=false;
     const palette=["#b63d2f","#e4ad3b","#2d7c73","#745a9c","#315f86","#7e9445"];
@@ -785,7 +833,7 @@ export default function Home(){
     flash("Sesión cerrada");
   };
   return <main>
-    <header className="topbar"><button className="brand" onClick={()=>setView("biblioteca")}><span className="brandmark">B</span><span><b>Biblioteca virtual MJVC Mérida</b><small>Colección, préstamo y lectura en un solo lugar</small></span></button><nav>{[["biblioteca","Estantería"],["comunidad","Lectores"],["foro","Foro"]].map(([id,label])=><button key={id} className={view===id?"active":""} onClick={()=>setView(id as View)}>{label}</button>)}</nav><div className="profile-menu">{authLoading?<span className="login-link">Cargando…</span>:loggedIn?<>{currentUser?.role==="admin"&&<button className="upload-link" onClick={()=>setView("subir")}>＋ Subir libro</button>}<button className="me" onClick={()=>setModal("profile")}><Avatar name={currentName} color="#cf915f" small src={currentUser?.photoUrl}/><span>{currentName}{currentUser?.role==="admin"?" · Admin":""}</span></button><button className="logout" onClick={logout}>Cerrar sesión</button></>:<><button className="login-link" onClick={()=>setAuthView("login")}>Iniciar sesión</button><button className="upload-link" onClick={()=>setAuthView("signup")}>Registrarse</button></>}</div></header>
+    <header className="topbar"><button className="brand" onClick={()=>setView("biblioteca")}><span className="brandmark">B</span><span><b>Biblioteca virtual MJVC Mérida</b><small>Colección, préstamo y lectura en un solo lugar</small></span></button><nav>{[["biblioteca","Estantería"],["comunidad","Lectores"],["foro","Foro"]].map(([id,label])=><button key={id} className={view===id?"active":""} onClick={()=>setView(id as View)}>{label}</button>)}</nav><div className="profile-menu"><button type="button" className="theme-switch" role="switch" aria-checked={theme==="dark"} aria-label={theme==="dark"?"Cambiar a modo claro":"Cambiar a modo oscuro"} title={theme==="dark"?"Modo oscuro activado":"Modo claro activado"} onClick={toggleTheme} disabled={themeSaving}><span className="theme-switch-track" aria-hidden="true"><i/></span><span className="theme-switch-label">{theme==="dark"?"Oscuro":"Claro"}</span></button>{authLoading?<span className="login-link">Cargando…</span>:loggedIn?<>{currentUser?.role==="admin"&&<button className="upload-link" onClick={()=>setView("subir")}>＋ Subir libro</button>}<button className="me" onClick={()=>setModal("profile")}><Avatar name={currentName} color="#cf915f" small src={currentUser?.photoUrl}/><span>{currentName}{currentUser?.role==="admin"?" · Admin":""}</span></button><button className="logout" onClick={logout}>Cerrar sesión</button></>:<><button className="login-link" onClick={()=>setAuthView("login")}>Iniciar sesión</button><button className="upload-link" onClick={()=>setAuthView("signup")}>Registrarse</button></>}</div></header>
 
     {view==="biblioteca"&&<div className="library-layout">
       <aside className="left-panel"><p className="eyebrow">EN TU MESITA</p><h2>{owned?"Una historia te espera":"Tu mesita está libre"}</h2>{owned?<><button className="owned-cover" style={{background:owned.cover}} onClick={()=>setView("lector")}><span>{owned.title}</span><small>{owned.author}</small><i>{owned.progress??0}%</i></button><div className="progress"><span style={{width:`${owned.progress??0}%`}}/></div><p className="muted">{(owned.progress??0)<=0?"Portada":`Avance ${owned.progress}% · ${owned.pages} páginas`}</p><div className="pair"><button className="primary" onClick={()=>setView("lector")}>Continuar</button><button className="secondary" onClick={openReturnModal}>Devolver</button></div></>:<p className="empty-note">Explora el estante y elige tu próxima lectura.</p>}<div className="leader-mini"><div className="section-title"><div><p className="eyebrow">ZONA DE LECTORES</p><h3>Quienes más han leído</h3></div><button onClick={()=>setView("comunidad")}>Ver todos →</button></div><div className="avatar-row">{people.map((p,i)=><button key={p.name} onClick={()=>setView("comunidad")}><span className="rank">{i+1}</span><Avatar name={p.name} color={p.color} small src={p.photoUrl}/></button>)}</div></div><button className="forum-card" onClick={()=>setView("foro")}><span>Conversaciones del club</span><b>Entrar al foro <i>↗</i></b></button></aside>
