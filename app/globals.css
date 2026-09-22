@@ -2013,3 +2013,14 @@
 .reader-final-close-transition{
   contain:layout paint;
 }
+
+
+/* Measure the actual printed block so sparse pages can use larger type. */
+.reader-sheet-copy{
+  width:100%;
+  display:flow-root;
+  box-sizing:border-box;
+}
+.reader-sheet-copy>p:last-child{
+  margin-bottom:0;
+}
