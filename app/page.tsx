@@ -76,7 +76,9 @@ function AnimatedReaderSpread({pages,currentStart,targetStart,direction}:{pages:
 }
 
 function ReaderFinalCloseTransition({pages,start,cover,title,author}:{pages:ReconstructedPage[];start:number;cover:string;title:string;author:string}){
-  return <div className="reader-final-close-transition"><ReaderSpread pages={pages} start={start}/><div className="reader-final-close-cover"><div className="reader-final-close-face inner"/><div className="reader-final-close-face outer" style={{background:cover}}><span>Biblioteca MJVC Mérida</span><strong>Fin</strong><b>{title}</b><small>{author}</small></div></div></div>
+  const rightPage=pages[start];
+  const rightNumber=start+1<=pages.length?start+1:undefined;
+  return <div className="reader-final-close-transition"><ReaderSpread pages={pages} start={start}/><div className="reader-final-close-cover"><div className="reader-final-close-face inner"><BookSheet page={rightPage} pageNumber={rightNumber} side="right" zoom={1}/></div><div className="reader-final-close-face outer" style={{background:cover}}><span>Biblioteca MJVC Mérida</span><strong>Fin</strong><b>{title}</b><small>{author}</small></div></div></div>
 }
 
 export default function Home(){
