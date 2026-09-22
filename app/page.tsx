@@ -87,7 +87,7 @@ export default function Home(){
   const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false);
   const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next"),[readerPendingPage,setReaderPendingPage]=useState<number|null>(null),[readerAnimating,setReaderAnimating]=useState(false),[readerClosing,setReaderClosing]=useState(false);
   const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false),[returnQuestions,setReturnQuestions]=useState<ReaderQuestion[]>([]),[returnQuestionsLoading,setReturnQuestionsLoading]=useState(false),[returnExtraQuestions,setReturnExtraQuestions]=useState(0);
-  const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null),readerFinishTimerRef=useRef<number|null>(null);
+  const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null),readerFinishTimerRef=useRef<number|null>(null),readerFinishShownRef=useRef(false);
   const [shelfPage,setShelfPage]=useState(0);
   const sortedBooks=useMemo(()=>[...books].sort((a,b)=>a.title.localeCompare(b.title,"es",{sensitivity:"base"})),[books]);
   const filtered=useMemo(()=>sortedBooks.filter(b=>(!search||`${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()))&&(!year||String(b.year)===year)&&(!type||b.type===type)),[search,year,type,sortedBooks]);
@@ -332,6 +332,7 @@ export default function Home(){
     setReaderClosing(false);
     setReaderPendingPage(null);
     setReaderAnimating(false);
+    readerFinishShownRef.current=false;
     fetch(`/api/books/file?id=${owned.id}`)
       .then(async response=>{
         if(!response.ok)throw new Error(await response.text()||"No se pudo abrir el libro");
@@ -372,6 +373,8 @@ export default function Home(){
       ?(readerPage===0?1:readerPage===lastSpreadStart?backCoverPage:readerPage===backCoverPage?backCoverPage:Math.min(lastSpreadStart,readerPage+2))
       :(readerPage===backCoverPage?lastSpreadStart:readerPage<=1?0:Math.max(1,readerPage-2));
     if(target===readerPage)return;
+    if(readerPage===backCoverPage&&direction==="prev")readerFinishShownRef.current=false;
+    if(target===backCoverPage)readerFinishShownRef.current=false;
     setReaderTurn(direction);
     setReaderPendingPage(target);
     setReaderAnimating(true);
@@ -469,7 +472,8 @@ export default function Home(){
     }
   };
   useEffect(()=>{
-    if(view!=="lector"||readerPage!==backCoverPage||readerAnimating||modal==="return")return;
+    if(view!=="lector"||readerPage!==backCoverPage||readerAnimating||modal==="return"||readerFinishShownRef.current)return;
+    readerFinishShownRef.current=true;
     setReaderClosing(false);
     if(readerFinishTimerRef.current!==null)window.clearTimeout(readerFinishTimerRef.current);
     const closeTimer=window.setTimeout(()=>setReaderClosing(true),180);
