@@ -21,31 +21,50 @@ function Avatar({name,color,small=false,src=null}:{name:string;color:string;smal
 function Stars({rating,onSelect}:{rating:number;onSelect?:(rating:number)=>void}){return <span className={`stars ${onSelect?"interactive":""}`} aria-label={`${rating} de 5`}>{[1,2,3,4,5].map(n=>onSelect?<button type="button" key={n} className={n<=rating?"on":""} onClick={()=>onSelect(n)} aria-label={`${n} estrellas`}>★</button>:<span key={n} className={n<=Math.round(rating)?"on":""}>★</span>)}</span>}
 function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumber?:number;side:"left"|"right";zoom:number}){
   const contentRef=useRef<HTMLDivElement|null>(null);
+  const copyRef=useRef<HTMLDivElement|null>(null);
   const [fitScale,setFitScale]=useState(1);
   useLayoutEffect(()=>{
     if(!page)return;
     const node=contentRef.current;
-    if(!node)return;
+    const copy=copyRef.current;
+    if(!node||!copy)return;
     const fit=()=>{
-      const width=Math.max(1,Math.round(node.clientWidth));
-      const height=Math.max(1,Math.round(node.clientHeight));
-      const cacheKey=`${width}x${height}`;
+      const styles=getComputedStyle(node);
+      const paddingX=(parseFloat(styles.paddingLeft)||0)+(parseFloat(styles.paddingRight)||0);
+      const paddingY=(parseFloat(styles.paddingTop)||0)+(parseFloat(styles.paddingBottom)||0);
+      const availableWidth=Math.max(1,node.clientWidth-paddingX);
+      const availableHeight=Math.max(1,node.clientHeight-paddingY);
+      const cacheKey=`${Math.round(availableWidth)}x${Math.round(availableHeight)}`;
       const cached=pageFitCache.get(page)?.get(cacheKey);
       if(cached){
         node.style.fontSize=`${cached}em`;
         setFitScale(cached);
         return;
       }
-      let low=.42;
-      let high=1.22;
+
+      const fitsAt=(scale:number)=>{
+        node.style.fontSize=`${scale}em`;
+        const rect=copy.getBoundingClientRect();
+        return copy.scrollHeight<=availableHeight-4&&
+          copy.scrollWidth<=availableWidth-4&&
+          rect.height<=availableHeight-4&&
+          rect.width<=availableWidth+1;
+      };
+
+      let low=.46;
+      let high=1.68;
       let best=low;
-      for(let attempt=0;attempt<13;attempt++){
+      for(let attempt=0;attempt<15;attempt++){
         const candidate=(low+high)/2;
-        node.style.fontSize=`${candidate}em`;
-        const fits=node.scrollHeight<=node.clientHeight-3&&node.scrollWidth<=node.clientWidth-3;
-        if(fits){best=candidate;low=candidate}else{high=candidate}
+        if(fitsAt(candidate)){
+          best=candidate;
+          low=candidate;
+        }else{
+          high=candidate;
+        }
       }
-      const scale=Math.max(.42,Math.min(1.22,Math.floor(best*1000)/1000));
+
+      const scale=Math.max(.46,Math.min(1.68,Math.floor(best*.985*1000)/1000));
       node.style.fontSize=`${scale}em`;
       let sizes=pageFitCache.get(page);
       if(!sizes){sizes=new Map<string,number>();pageFitCache.set(page,sizes)}
@@ -57,7 +76,7 @@ function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumb
     observer.observe(node);
     return ()=>observer.disconnect();
   },[page]);
-  return <article className={`reader-sheet ${side} ${!page?"blank":""} ${page?.heading?"has-heading":""}`} style={{fontSize:`${zoom}em`}}>{page?<><div ref={contentRef} className="reader-sheet-inner" style={{fontSize:`${fitScale}em`}}>{page.artwork&&<img className="reader-artwork" src={page.artwork} alt="Ilustración recuperada del documento original"/>}{page.heading&&<h3>{page.heading}</h3>}{page.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div><span className="reader-page-number">{pageNumber}</span></>:<div className="reader-sheet-inner reader-blank-page"/>}</article>
+  return <article className={`reader-sheet ${side} ${!page?"blank":""} ${page?.heading?"has-heading":""}`} style={{fontSize:`${zoom}em`}}>{page?<><div ref={contentRef} className="reader-sheet-inner" style={{fontSize:`${fitScale}em`}}><div ref={copyRef} className="reader-sheet-copy">{page.artwork&&<img className="reader-artwork" src={page.artwork} alt="Ilustración recuperada del documento original"/>}{page.heading&&<h3>{page.heading}</h3>}{page.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div></div><span className="reader-page-number">{pageNumber}</span></>:<div className="reader-sheet-inner reader-blank-page"/>}</article>
 }
 function ReaderSpread({pages,start,className=""}:{pages:ReconstructedPage[];start:number;className?:string}){
   return <div className={`reader-spread ${className}`}><BookSheet page={pages[start-1]} pageNumber={start} side="left" zoom={1}/><div className="reader-gutter"/><BookSheet page={pages[start]} pageNumber={start+1<=pages.length?start+1:undefined} side="right" zoom={1}/></div>
