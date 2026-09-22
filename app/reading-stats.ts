@@ -65,11 +65,15 @@ export async function computeUserPagesRead(userId: string): Promise<number> {
   }, 0);
 }
 
+export async function persistUserPagesRead(userId: string, pagesRead: number) {
+  await env.DB.prepare("UPDATE users SET pages_read = ? WHERE id = ?")
+    .bind(Math.max(0, Math.round(pagesRead)), userId)
+    .run();
+}
+
 export async function syncUserPagesRead(userId: string): Promise<number> {
   const pagesRead = await computeUserPagesRead(userId);
-  await env.DB.prepare("UPDATE users SET pages_read = ? WHERE id = ?")
-    .bind(pagesRead, userId)
-    .run();
+  await persistUserPagesRead(userId, pagesRead);
   return pagesRead;
 }
 
