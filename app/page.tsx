@@ -10,6 +10,7 @@ type SessionUser = { id:string; name:string; email:string; role:"reader"|"admin"
 type ReaderQuestion = { id:number; body:string; user:string };
 type ReconstructedPage = { heading:string|null; paragraphs:string[]; artwork?:string|null };
 type ReconstructedBook = { version:1; source:"pdf"|"txt"; pages:ReconstructedPage[] };
+const pageFitCache=new WeakMap<ReconstructedPage,number>();
 
 const initialPosts: ForumPost[] = [];
 
@@ -20,32 +21,26 @@ function Avatar({name,color,small=false,src=null}:{name:string;color:string;smal
 function Stars({rating,onSelect}:{rating:number;onSelect?:(rating:number)=>void}){return <span className={`stars ${onSelect?"interactive":""}`} aria-label={`${rating} de 5`}>{[1,2,3,4,5].map(n=>onSelect?<button type="button" key={n} className={n<=rating?"on":""} onClick={()=>onSelect(n)} aria-label={`${n} estrellas`}>★</button>:<span key={n} className={n<=Math.round(rating)?"on":""}>★</span>)}</span>}
 function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumber?:number;side:"left"|"right";zoom:number}){
   const contentRef=useRef<HTMLDivElement|null>(null);
-  const [fitScale,setFitScale]=useState(1);
+  const [fitScale,setFitScale]=useState(()=>page?pageFitCache.get(page)??1:1);
   useLayoutEffect(()=>{
-    setFitScale(1);
     if(!page)return;
-    let frame=0;
-    const fit=()=>{
-      const node=contentRef.current;
-      if(!node)return;
-      const next=()=>{
-        const current=Number(node.dataset.fitScale||"1");
-        const fits=node.scrollHeight<=node.clientHeight+2&&node.scrollWidth<=node.clientWidth+2;
-        if(fits||current<=.58)return;
-        const updated=Math.max(.58,Math.round((current-.04)*100)/100);
-        node.dataset.fitScale=String(updated);
-        setFitScale(updated);
-        frame=requestAnimationFrame(next);
-      };
-      node.dataset.fitScale="1";
-      frame=requestAnimationFrame(next);
-    };
-    fit();
-    const observer=new ResizeObserver(fit);
-    if(contentRef.current)observer.observe(contentRef.current);
-    return ()=>{cancelAnimationFrame(frame);observer.disconnect()};
+    const cached=pageFitCache.get(page);
+    if(cached){
+      setFitScale(cached);
+      return;
+    }
+    const node=contentRef.current;
+    if(!node)return;
+    let scale=1;
+    node.style.fontSize="1em";
+    while(scale>.5&&(node.scrollHeight>node.clientHeight+2||node.scrollWidth>node.clientWidth+2)){
+      scale=Math.max(.5,Math.round((scale-.03)*100)/100);
+      node.style.fontSize=`${scale}em`;
+    }
+    pageFitCache.set(page,scale);
+    setFitScale(scale);
   },[page]);
-  return <article className={`reader-sheet ${side} ${!page?"blank":""} ${page?.heading?"has-heading":""}`} style={{fontSize:`${zoom}em`}}>{page?<><div ref={contentRef} className="reader-sheet-inner" data-fit-scale={fitScale} style={{fontSize:`${fitScale}em`}}>{page.artwork&&<img className="reader-artwork" style={{maxHeight:`${210*fitScale}px`}} src={page.artwork} alt="Ilustración recuperada del documento original"/>}{page.heading&&<h3>{page.heading}</h3>}{page.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div><span className="reader-page-number">{pageNumber}</span></>:<div className="reader-sheet-inner reader-blank-page"/>}</article>
+  return <article className={`reader-sheet ${side} ${!page?"blank":""} ${page?.heading?"has-heading":""}`} style={{fontSize:`${zoom}em`}}>{page?<><div ref={contentRef} className="reader-sheet-inner" style={{fontSize:`${fitScale}em`}}>{page.artwork&&<img className="reader-artwork" style={{maxHeight:`${210*fitScale}px`}} src={page.artwork} alt="Ilustración recuperada del documento original"/>}{page.heading&&<h3>{page.heading}</h3>}{page.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div><span className="reader-page-number">{pageNumber}</span></>:<div className="reader-sheet-inner reader-blank-page"/>}</article>
 }
 function ReaderSpread({pages,start,className=""}:{pages:ReconstructedPage[];start:number;className?:string}){
   return <div className={`reader-spread ${className}`}><BookSheet page={pages[start-1]} pageNumber={start} side="left" zoom={1}/><div className="reader-gutter"/><BookSheet page={pages[start]} pageNumber={start+1<=pages.length?start+1:undefined} side="right" zoom={1}/></div>
