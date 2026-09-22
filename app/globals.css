@@ -1970,3 +1970,46 @@
     animation-duration:1ms!important;
   }
 }
+
+
+/* Synchronize cover visibility with hinge completion */
+.reader-cover-shell.opening .reader-cover-hinge,
+.reader-cover-shell.closing .reader-cover-hinge{
+  animation-duration:940ms!important;
+}
+.reader-cover-shell.opening .reader-cover-underlay{
+  animation:readerSpreadAppearSynced 940ms cubic-bezier(.16,.74,.18,1) both!important;
+}
+.reader-cover-shell.closing .reader-cover-underlay{
+  animation:readerSpreadDisappearSynced 940ms cubic-bezier(.16,.74,.18,1) both!important;
+}
+@keyframes readerSpreadAppearSynced{
+  0%,84%{opacity:0}
+  94%{opacity:.35}
+  100%{opacity:1}
+}
+@keyframes readerSpreadDisappearSynced{
+  0%,92%{opacity:1}
+  97%{opacity:.55}
+  100%{opacity:0}
+}
+
+/* Keep the last spread visible until the back cover has practically completed its rotation. */
+.reader-final-close-transition>.reader-spread{
+  animation:readerLastSpreadFadeSynced 960ms linear both!important;
+}
+.reader-final-close-cover{
+  animation-duration:960ms!important;
+}
+@keyframes readerLastSpreadFadeSynced{
+  0%,92%{opacity:1}
+  97%{opacity:.65}
+  100%{opacity:0}
+}
+
+/* Avoid one-frame pops while React swaps from animated to resting state. */
+.reader-cover-shell.opening,
+.reader-cover-shell.closing,
+.reader-final-close-transition{
+  contain:layout paint;
+}
