@@ -4,7 +4,7 @@ import { authCredentials, authSessions, users } from "../db/schema";
 
 const SESSION_COOKIE = "mjvc_session";
 const SESSION_DAYS = 30;
-const PASSWORD_ITERATIONS = 210_000;
+const PASSWORD_ITERATIONS = 100_000;
 const PASSWORD_PREFIX = `v1$${PASSWORD_ITERATIONS}$`;
 
 export type SessionUser = {
