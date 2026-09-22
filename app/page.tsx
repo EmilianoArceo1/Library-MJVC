@@ -136,7 +136,6 @@ export default function Home(){
     const root=document.documentElement;
     root.dataset.theme=theme;
     root.style.colorScheme=theme;
-    return ()=>{delete root.dataset.theme;root.style.colorScheme=""};
   },[theme]);
   useEffect(()=>{
     let cancelled=false;
