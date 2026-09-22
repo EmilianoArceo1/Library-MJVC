@@ -75,3 +75,7 @@
   .reader-controls{padding:10px 12px;gap:10px}
   .edit-book-row{grid-template-columns:1fr}
 }
+
+.book-admin-actions .trash-glyph{width:10px;height:11px;border:1.5px solid currentColor;border-top:0;border-radius:0 0 2px 2px;position:relative;display:block}
+.book-admin-actions .trash-glyph:before{content:"";position:absolute;left:-2px;right:-2px;top:-3px;border-top:1.5px solid currentColor}
+.book-admin-actions .trash-glyph:after{content:"";position:absolute;width:5px;left:1px;top:-6px;border-top:1.5px solid currentColor}
