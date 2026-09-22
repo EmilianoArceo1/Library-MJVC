@@ -2,20 +2,23 @@ import { eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { books, loans, users } from "../../../db/schema";
 import { computeAllUserPagesRead, computeUniqueCompletedReadCounts, persistUserPagesRead } from "../../reading-stats";
+import { ensureWorkflowSchema } from "../../workflow-server";
 
 export async function GET() {
   try {
+    await ensureWorkflowSchema();
     const db = getDb();
 
     const [bookRows, userRows, activeLoanRows, pagesReadByUser, readCounts] =
       await Promise.all([
-        db.select().from(books).orderBy(books.title),
+        db.select().from(books).where(eq(books.publicationStatus, "published")).orderBy(books.title),
         db
           .select({
             id: users.id,
             name: users.name,
             pagesRead: users.pagesRead,
             role: users.role,
+            approvalStatus: users.approvalStatus,
             photoKey: users.photoKey,
           })
           .from(users)
@@ -62,6 +65,7 @@ export async function GET() {
         readers: [],
       })),
       people: userRows
+        .filter((user) => user.approvalStatus === "approved")
         .map((user) => ({
           id: user.id,
           name: user.name,

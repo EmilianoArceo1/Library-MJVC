@@ -70,6 +70,12 @@ export async function POST(request: Request) {
         { status: 401 },
       );
     }
+    if (identity.approvalStatus !== "approved") {
+      return Response.json(
+        { error: "Tu cuenta debe estar aprobada para reaccionar." },
+        { status: 403 },
+      );
+    }
 
     const payload = (await request.json()) as {
       targetType?: string;

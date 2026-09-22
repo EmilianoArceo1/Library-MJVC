@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { authCredentials, authSessions, users } from "../db/schema";
+import { ensureWorkflowSchema, type ApprovalStatus, type UserRole } from "./workflow-server";
 
 const SESSION_COOKIE = "mjvc_session";
 const SESSION_DAYS = 30;
@@ -11,7 +12,8 @@ export type SessionUser = {
   id: string;
   name: string;
   email: string;
-  role: "reader" | "admin";
+  role: UserRole;
+  approvalStatus: ApprovalStatus;
   description: string;
   pagesRead: number;
   photoUrl: string | null;
@@ -178,6 +180,7 @@ export function clearSessionCookie(request: Request): string {
 }
 
 export async function destroySession(request: Request): Promise<void> {
+  await ensureWorkflowSchema();
   const token = readCookie(request, SESSION_COOKIE);
   if (!token) return;
 
@@ -189,6 +192,7 @@ export async function destroySession(request: Request): Promise<void> {
 export async function getSessionUser(
   request: Request,
 ): Promise<SessionUser | null> {
+  await ensureWorkflowSchema();
   const token = readCookie(request, SESSION_COOKIE);
   if (!token) return null;
 
@@ -201,6 +205,7 @@ export async function getSessionUser(
       id: users.id,
       name: users.name,
       role: users.role,
+      approvalStatus: users.approvalStatus,
       email: authCredentials.email,
       description: users.description,
       pagesRead: users.pagesRead,
@@ -223,7 +228,8 @@ export async function getSessionUser(
     id: row.id,
     name: row.name,
     email: row.email,
-    role: row.role as "reader" | "admin",
+    role: row.role as UserRole,
+    approvalStatus: row.approvalStatus as ApprovalStatus,
     description: row.description,
     pagesRead: row.pagesRead,
     photoUrl: row.photoKey

@@ -8,9 +8,11 @@ import {
   verifyPassword,
   type SessionUser,
 } from "../../../auth-server";
+import { ensureWorkflowSchema } from "../../../workflow-server";
 
 export async function POST(request: Request) {
   try {
+    await ensureWorkflowSchema();
     const payload = (await request.json()) as {
       email?: string;
       password?: string;
@@ -32,6 +34,7 @@ export async function POST(request: Request) {
         id: users.id,
         name: users.name,
         role: users.role,
+        approvalStatus: users.approvalStatus,
         email: authCredentials.email,
         description: users.description,
         pagesRead: users.pagesRead,
@@ -58,7 +61,8 @@ export async function POST(request: Request) {
       id: row.id,
       name: row.name,
       email: row.email,
-      role: row.role as "reader" | "admin",
+      role: row.role as "reader" | "advisor" | "admin",
+      approvalStatus: row.approvalStatus as "pending" | "approved" | "rejected",
       description: row.description,
       pagesRead: row.pagesRead,
       photoUrl: row.photoKey

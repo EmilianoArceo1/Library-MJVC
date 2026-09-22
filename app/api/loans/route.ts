@@ -81,6 +81,12 @@ export async function POST(request: Request) {
     if (!session) {
       return Response.json({ error: "Inicia sesión para tomar un libro." }, { status: 401 });
     }
+    if (session.approvalStatus !== "approved") {
+      return Response.json(
+        { error: "Tu cuenta debe estar aprobada antes de tomar libros." },
+        { status: 403 },
+      );
+    }
 
     const payload = (await request.json()) as { bookId?: number };
     const bookId = Number(payload.bookId);

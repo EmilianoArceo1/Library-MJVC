@@ -5,7 +5,8 @@ export const users = sqliteTable("users", {
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   photoKey: text("photo_key"),
-  role: text("role", { enum: ["reader", "admin"] }).notNull().default("reader"),
+  role: text("role", { enum: ["reader", "advisor", "admin"] }).notNull().default("reader"),
+  approvalStatus: text("approval_status", { enum: ["pending", "approved", "rejected"] }).notNull().default("approved"),
   pagesRead: integer("pages_read").notNull().default(0),
 });
 
@@ -47,6 +48,7 @@ export const books = sqliteTable("books", {
   fileKey: text("file_key"),
   coverKey: text("cover_key"),
   rating: real("rating").notNull().default(0),
+  publicationStatus: text("publication_status", { enum: ["published", "hidden"] }).notNull().default("published"),
 });
 
 export const loans = sqliteTable("loans", {

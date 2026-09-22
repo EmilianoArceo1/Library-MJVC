@@ -44,9 +44,12 @@ export async function POST(request: Request) {
       );
     }
 
-    if (session.role !== "admin") {
+    if (
+      session.approvalStatus !== "approved" ||
+      (session.role !== "admin" && session.role !== "advisor")
+    ) {
       return Response.json(
-        { error: "Solo un administrador puede agregar libros." },
+        { error: "Solo administradores y asesores aprobados pueden agregar libros directamente." },
         { status: 403 },
       );
     }
@@ -266,9 +269,9 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const session = await getSessionUser(request);
-    if (!session || session.role !== "admin") {
+    if (!session || session.role !== "admin" || session.approvalStatus !== "approved") {
       return Response.json(
-        { error: "Solo un administrador puede editar libros." },
+        { error: "Solo un administrador aprobado puede editar libros." },
         { status: 403 },
       );
     }
@@ -365,9 +368,9 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const session = await getSessionUser(request);
-    if (!session || session.role !== "admin") {
+    if (!session || session.role !== "admin" || session.approvalStatus !== "approved") {
       return Response.json(
-        { error: "Solo un administrador puede eliminar libros." },
+        { error: "Solo un administrador aprobado puede eliminar libros." },
         { status: 403 },
       );
     }

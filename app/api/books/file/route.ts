@@ -39,7 +39,7 @@ export async function GET(request: Request) {
       return new Response("Este libro no tiene contenido de lectura asociado.", { status: 404 });
     }
 
-    if (session.role !== "admin") {
+    if (session.role !== "admin" || session.approvalStatus !== "approved") {
       const [loan] = await db
         .select({ id: loans.id })
         .from(loans)
