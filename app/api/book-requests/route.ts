@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getSessionUser } from "../../auth-server";
-import { ensureWorkflowSchema } from "../../workflow-server";
+import { createNotification, ensureWorkflowSchema } from "../../workflow-server";
 
 const MAX_BOOK_BYTES = 25 * 1024 * 1024;
 const MAX_PACKAGE_BYTES = 18 * 1024 * 1024;
@@ -197,6 +197,14 @@ export async function POST(request: Request) {
         now,
       )
       .first<{ id: number }>();
+
+    await createNotification({
+      userId: session.id,
+      title: `Propuesta “${title}” enviada`,
+      body:
+        "La propuesta quedó pendiente de revisión. Aquí recibirás la decisión y el nombre de quien la tome.",
+      kind: "book-request",
+    });
 
     return Response.json(
       {
