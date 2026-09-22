@@ -8,6 +8,8 @@ type Reader = { id:string; name:string; pages:number; role:"reader"|"admin"; now
 type ForumPost = { id:number; user:string; book:string; time:string; text:string; likes:number; replies:number; color:string; photoUrl?:string|null };
 type SessionUser = { id:string; name:string; email:string; role:"reader"|"admin"; description:string; pagesRead:number; photoUrl:string|null };
 type ReaderQuestion = { id:number; body:string; user:string };
+type ReconstructedPage = { heading:string|null; paragraphs:string[]; artwork?:string|null };
+type ReconstructedBook = { version:1; source:"pdf"|"txt"; pages:ReconstructedPage[] };
 
 const initialPosts: ForumPost[] = [];
 
@@ -16,16 +18,17 @@ const reactionKey=(targetType:ReactionTargetType,targetId:string|number,emoji:st
 
 function Avatar({name,color,small=false,src=null}:{name:string;color:string;small?:boolean;src?:string|null}){return <div className={`avatar ${small?"small":""}`} style={{background:color}} aria-label={name}>{src?<img src={src} alt=""/>:name[0]}</div>}
 function Stars({rating,onSelect}:{rating:number;onSelect?:(rating:number)=>void}){return <span className={`stars ${onSelect?"interactive":""}`} aria-label={`${rating} de 5`}>{[1,2,3,4,5].map(n=>onSelect?<button type="button" key={n} className={n<=rating?"on":""} onClick={()=>onSelect(n)} aria-label={`${n} estrellas`}>★</button>:<span key={n} className={n<=Math.round(rating)?"on":""}>★</span>)}</span>}
+function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumber?:number;side:"left"|"right";zoom:number}){return <article className={`reader-sheet ${side} ${!page?"blank":""} ${page?.heading?"has-heading":""}`} style={{fontSize:`${zoom}em`}}>{page?<><div className="reader-sheet-inner">{page.artwork&&<img className="reader-artwork" src={page.artwork} alt="Ilustración recuperada del documento original"/>}{page.heading&&<h3>{page.heading}</h3>}{page.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div><span className="reader-page-number">{pageNumber}</span></>:<div className="reader-sheet-inner reader-blank-page"/>}</article>}
 
 export default function Home(){
   const [view,setView]=useState<View>("biblioteca"),[books,setBooks]=useState<Book[]>([]),[people,setPeople]=useState<Reader[]>([]),[selected,setSelected]=useState<Book|null>(null),[search,setSearch]=useState(""),[year,setYear]=useState(""),[type,setType]=useState("");
   const readBooks=books;
   const [owned,setOwned]=useState<Book|null>(null),[toast,setToast]=useState(""),[modal,setModal]=useState<"detail"|"return"|"profile"|null>(null),[posts,setPosts]=useState<ForumPost[]>(initialPosts),[draft,setDraft]=useState(""),[publishing,setPublishing]=useState(false),[postBook,setPostBook]=useState(""),[liked,setLiked]=useState<number[]>([]),[reactionCounts,setReactionCounts]=useState<Record<string,number>>({}),[reactionBusy,setReactionBusy]=useState<string[]>([]);
-  const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookUploading,setBookUploading]=useState(false);
+  const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookPackage,setBookPackage]=useState(""),[bookUploading,setBookUploading]=useState(false);
   const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false);
-  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(1),[readerTotalPages,setReaderTotalPages]=useState(0),[readerKind,setReaderKind]=useState<"pdf"|"text"|null>(null),[readerTextPages,setReaderTextPages]=useState<string[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1);
+  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next");
   const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false),[returnQuestions,setReturnQuestions]=useState<ReaderQuestion[]>([]),[returnQuestionsLoading,setReturnQuestionsLoading]=useState(false),[returnExtraQuestions,setReturnExtraQuestions]=useState(0);
-  const pdfDocRef=useRef<any>(null),readerCanvasRef=useRef<HTMLCanvasElement|null>(null),pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null);
+  const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null);
   const [shelfPage,setShelfPage]=useState(0);
   const sortedBooks=useMemo(()=>[...books].sort((a,b)=>a.title.localeCompare(b.title,"es",{sensitivity:"base"})),[books]);
   const filtered=useMemo(()=>sortedBooks.filter(b=>(!search||`${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()))&&(!year||String(b.year)===year)&&(!type||b.type===type)),[search,year,type,sortedBooks]);
@@ -178,79 +181,130 @@ export default function Home(){
       flash(error instanceof Error?error.message:"No se pudo tomar el libro.");
     }
   };
-  const pageFromProgress=(progress:number,total:number)=>progress<=0||total<=1?1:Math.min(total,Math.max(1,Math.round(1+(progress/100)*(total-1))));
+  const linesToPage=(rawLines:string[]):ReconstructedPage=>{
+    const lines=rawLines.map(line=>line.replace(/\s+/g," ").trim()).filter(Boolean);
+    let heading:string|null=null;
+    if(lines.length>1&&lines[0].length<=90&&!/[.!?]$/.test(lines[0])){
+      heading=lines.shift()||null;
+    }
+    const paragraphs:string[]=[];
+    let current="";
+    for(const line of lines){
+      current=current?`${current} ${line}`:line;
+      if(/[.!?…]["'”’)]?$/.test(line)||current.length>520){
+        paragraphs.push(current.trim());
+        current="";
+      }
+    }
+    if(current.trim())paragraphs.push(current.trim());
+    if(paragraphs.length===0&&heading){
+      paragraphs.push(heading);
+      heading=null;
+    }
+    return {heading,paragraphs};
+  };
+  const reconstructText=(text:string):ReconstructedBook=>{
+    const words=text.trim()?text.trim().split(/\s+/):[];
+    const pages:ReconstructedPage[]=[];
+    for(let index=0;index<words.length;index+=300){
+      pages.push({heading:null,paragraphs:[words.slice(index,index+300).join(" ")]});
+    }
+    if(pages.length===0)pages.push({heading:null,paragraphs:["Este archivo no contiene texto visible."]});
+    return {version:1,source:"txt",pages};
+  };
+  const reconstructPdf=async(data:ArrayBuffer,withArtwork:boolean):Promise<ReconstructedBook>=>{
+    const [pdfjs,workerModule]=await Promise.all([import("pdfjs-dist"),import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
+    pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
+    const pdf=await pdfjs.getDocument({data}).promise;
+    const pages:ReconstructedPage[]=[];
+    const imageOps=new Set<number>();
+    for(const operation of [pdfjs.OPS.paintImageXObject,pdfjs.OPS.paintInlineImageXObject]){
+      if(typeof operation==="number")imageOps.add(operation);
+    }
+    for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber++){
+      const page=await pdf.getPage(pageNumber);
+      const content=await page.getTextContent();
+      const lines:string[]=[];
+      let line="";
+      for(const item of content.items as any[]){
+        if(!item||typeof item.str!=="string")continue;
+        const fragment=item.str.trim();
+        if(fragment)line=line?`${line} ${fragment}`:fragment;
+        if(item.hasEOL&&line){lines.push(line);line="";}
+      }
+      if(line)lines.push(line);
+      const rebuilt=linesToPage(lines);
+      let artwork:string|null=null;
+      if(withArtwork){
+        try{
+          const operatorList=await page.getOperatorList();
+          const hasImages=operatorList.fnArray.some((operation:number)=>imageOps.has(operation));
+          if(hasImages&&lines.join(" ").length<900){
+            const viewport=page.getViewport({scale:.55});
+            const canvas=document.createElement("canvas");
+            canvas.width=Math.max(1,Math.floor(viewport.width));
+            canvas.height=Math.max(1,Math.floor(viewport.height));
+            const context=canvas.getContext("2d");
+            if(context){
+              await page.render({canvasContext:context,viewport}).promise;
+              artwork=canvas.toDataURL("image/jpeg",.62);
+            }
+          }
+        }catch(error){
+          console.warn("No se pudo recuperar la ilustración de una página",error);
+        }
+      }
+      pages.push({...rebuilt,artwork});
+    }
+    return {version:1,source:"pdf",pages};
+  };
+  const spreadFromProgress=(progress:number,total:number)=>{
+    if(progress<=0||total<1)return 0;
+    const approximate=Math.min(total,Math.max(1,Math.ceil((progress/100)*total)));
+    return approximate%2===0?Math.max(1,approximate-1):approximate;
+  };
   useEffect(()=>{
     let cancelled=false;
     if(view!=="lector"||!owned)return ()=>{cancelled=true};
     setReaderLoading(true);
     setReaderError("");
-    setReaderKind(null);
-    setReaderTextPages([]);
+    setReaderPages([]);
     setReaderZoom(1);
-    pdfDocRef.current=null;
     fetch(`/api/books/file?id=${owned.id}`)
       .then(async response=>{
-        if(!response.ok)throw new Error(await response.text()||"No se pudo abrir el archivo");
+        if(!response.ok)throw new Error(await response.text()||"No se pudo abrir el libro");
         const contentType=response.headers.get("content-type")||"";
-        if(contentType.includes("pdf")){
-          const [pdfjs,workerModule]=await Promise.all([import("pdfjs-dist"),import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
-          pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
-          const pdf=await pdfjs.getDocument({data:await response.arrayBuffer()}).promise;
-          if(cancelled)return;
-          pdfDocRef.current=pdf;
-          setReaderKind("pdf");
-          setReaderTotalPages(pdf.numPages);
-          setReaderPage(pageFromProgress(owned.progress||0,pdf.numPages));
+        let reconstructed:ReconstructedBook;
+        if(contentType.includes("mjvc.book+json")||contentType.includes("application/json")){
+          reconstructed=await response.json() as ReconstructedBook;
+        }else if(contentType.includes("pdf")){
+          reconstructed=await reconstructPdf(await response.arrayBuffer(),true);
         }else{
-          const text=await response.text();
-          const words=text.trim()?text.trim().split(/\s+/):[];
-          const pages:string[]=[];
-          for(let index=0;index<words.length;index+=300)pages.push(words.slice(index,index+300).join(" "));
-          if(pages.length===0)pages.push("Este archivo no contiene texto visible.");
-          if(cancelled)return;
-          setReaderTextPages(pages);
-          setReaderKind("text");
-          setReaderTotalPages(pages.length);
-          setReaderPage(pageFromProgress(owned.progress||0,pages.length));
+          reconstructed=reconstructText(await response.text());
         }
+        if(!reconstructed||!Array.isArray(reconstructed.pages)||reconstructed.pages.length===0)throw new Error("El libro no contiene páginas reconstruibles.");
+        if(cancelled)return;
+        setReaderPages(reconstructed.pages);
+        setReaderTotalPages(reconstructed.pages.length);
+        setReaderPage(spreadFromProgress(owned.progress||0,reconstructed.pages.length));
       })
       .catch(error=>{if(!cancelled)setReaderError(error instanceof Error?error.message:"No se pudo abrir el libro.")})
       .finally(()=>{if(!cancelled)setReaderLoading(false)});
     return ()=>{cancelled=true};
   },[view,owned?.id]);
   useEffect(()=>{
-    let cancelled=false;
-    let renderTask:any=null;
-    if(readerKind!=="pdf"||!pdfDocRef.current||!readerCanvasRef.current)return ()=>{cancelled=true};
-    const render=async()=>{
-      try{
-        const page=await pdfDocRef.current.getPage(readerPage);
-        if(cancelled||!readerCanvasRef.current)return;
-        const canvas=readerCanvasRef.current;
-        const viewport=page.getViewport({scale:1.2*readerZoom});
-        const context=canvas.getContext("2d");
-        if(!context)return;
-        canvas.width=Math.floor(viewport.width);
-        canvas.height=Math.floor(viewport.height);
-        renderTask=page.render({canvasContext:context,viewport});
-        await renderTask.promise;
-      }catch(error){
-        if(!cancelled&&!(error instanceof Error&&error.name==="RenderingCancelledException"))setReaderError(error instanceof Error?error.message:"No se pudo mostrar esta página.");
-      }
-    };
-    render();
-    return ()=>{cancelled=true;try{renderTask?.cancel()}catch{}};
-  },[readerKind,readerPage,readerTotalPages,readerLoading,readerZoom]);
-  useEffect(()=>{
     if(view!=="lector"||!loanId||readerTotalPages<1)return;
-    const progress=readerTotalPages<=1?0:Math.round(((readerPage-1)/(readerTotalPages-1))*100);
+    const lastVisible=readerPage===0?0:Math.min(readerTotalPages,readerPage+1);
+    const progress=lastVisible===0?0:Math.round((lastVisible/readerTotalPages)*100);
     setOwned(current=>current?{...current,progress}:current);
     const timer=setTimeout(()=>{
       fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress})}).catch(error=>console.error("No se pudo guardar el progreso",error));
     },450);
     return ()=>clearTimeout(timer);
   },[view,loanId,readerPage,readerTotalPages]);
-  const goReaderPage=(page:number)=>setReaderPage(Math.min(readerTotalPages,Math.max(1,page)));
+  const lastSpreadStart=readerTotalPages<1?0:(readerTotalPages%2===0?Math.max(1,readerTotalPages-1):readerTotalPages);
+  const previousReaderSpread=()=>{setReaderTurn("prev");setReaderPage(current=>current<=1?0:Math.max(1,current-2))};
+  const nextReaderSpread=()=>{setReaderTurn("next");setReaderPage(current=>current===0?1:Math.min(lastSpreadStart,current+2))};
   const changeReaderZoom=(delta:number)=>setReaderZoom(current=>Math.min(2,Math.max(.7,Math.round((current+delta)*10)/10)));
   const clampReaderZoom=(value:number)=>Math.min(2,Math.max(.7,Math.round(value*20)/20));
   const pinchDistance=()=>{
@@ -320,7 +374,7 @@ export default function Home(){
       setBooks(current=>current.map(book=>book.id===owned.id?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||book.reads}:book));
       setSelected(current=>current?.id===owned.id?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||current.reads}:current);
       setCurrentUser(user=>user?{...user,pagesRead:user.pagesRead+owned.pages}:user);
-      setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(1);setReaderTotalPages(0);pdfDocRef.current=null;
+      setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);
       flash("Libro devuelto. Tu calificación y aportaciones quedaron guardadas.");
     }catch(error){
       flash(error instanceof Error?error.message:"No se pudo devolver el libro.");
@@ -331,31 +385,28 @@ export default function Home(){
   const toggleProfileReaction=async(name:string,emoji:string)=>{const active=await toggleReaction("profile",name,emoji);if(active!==null)flash(active?`Reaccionaste al perfil de ${name}`:`Quitaste tu reacción a ${name}`)};
   const handleBookFile=async(file?:File)=>{
     setDetectedPages(0);
+    setBookPackage("");
     if(!file){setFileInfo("");return}
     const lower=file.name.toLowerCase();
     if(!(lower.endsWith(".pdf")||lower.endsWith(".txt"))){setFileInfo("Solo se permiten archivos PDF o TXT.");return}
     if(file.size>25*1024*1024){setFileInfo("El archivo supera el máximo de 25 MB.");return}
-    setFileInfo("Analizando el documento y calculando sus páginas…");
+    setFileInfo("Reconstruyendo texto e imágenes para el lector…");
     try{
-      if(lower.endsWith(".pdf")||file.type==="application/pdf"){
-        const [pdfjs,workerModule]=await Promise.all([import("pdfjs-dist"),import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
-        pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
-        const pdf=await pdfjs.getDocument({data:await file.arrayBuffer()}).promise;
-        const pages=Math.max(1,pdf.numPages);
-        setDetectedPages(pages);
-        setFileInfo(`${file.name} · ${(file.size/1024/1024).toFixed(2)} MB · ${pages} ${pages===1?"página detectada":"páginas detectadas"}`);
-      }else{
-        const text=await file.text();
-        const words=text.trim()?text.trim().split(/\s+/).length:0;
-        if(words===0){setFileInfo("El archivo TXT no contiene texto suficiente para calcular páginas.");return}
-        const pages=Math.max(1,Math.ceil(words/300));
-        setDetectedPages(pages);
-        setFileInfo(`${file.name} · ${words.toLocaleString("es-MX")} palabras · ${pages} páginas estimadas a 300 palabras por página`);
-      }
+      const reconstructed=lower.endsWith(".pdf")||file.type==="application/pdf"
+        ?await reconstructPdf(await file.arrayBuffer(),true)
+        :reconstructText(await file.text());
+      const serialized=JSON.stringify(reconstructed);
+      const packageMb=new Blob([serialized]).size/1024/1024;
+      if(packageMb>18)throw new Error("La reconstrucción es demasiado grande; prueba con un PDF más ligero.");
+      setDetectedPages(reconstructed.pages.length);
+      setBookPackage(serialized);
+      const illustrated=reconstructed.pages.filter(page=>Boolean(page.artwork)).length;
+      setFileInfo(`${file.name} · ${reconstructed.pages.length} páginas reconstruidas${illustrated?` · ${illustrated} con material visual`:""} · ${packageMb.toFixed(2)} MB`);
     }catch(error){
-      console.error("No se pudieron calcular las páginas",error);
+      console.error("No se pudo reconstruir el libro",error);
       setDetectedPages(0);
-      setFileInfo("No pudimos determinar las páginas de este archivo. Prueba con otro PDF o TXT.");
+      setBookPackage("");
+      setFileInfo(error instanceof Error?error.message:"No pudimos reconstruir este archivo.");
     }
   };
   const submitBook=async(event:FormEvent<HTMLFormElement>)=>{
@@ -365,8 +416,9 @@ export default function Home(){
     const data=new FormData(form);
     const file=data.get("file");
     if(!(file instanceof File)||file.size===0){flash("Selecciona el archivo del libro.");return}
-    if(detectedPages<1){flash("Espera a que terminemos de calcular las páginas del documento.");return}
+    if(detectedPages<1||!bookPackage){flash("Espera a que terminemos de reconstruir el documento.");return}
     data.set("pages",String(detectedPages));
+    data.set("contentPackage",bookPackage);
     setBookUploading(true);
     try{
       const response=await fetch("/api/books",{method:"POST",body:data});
@@ -383,6 +435,7 @@ export default function Home(){
       form.reset();
       setFileInfo("");
       setDetectedPages(0);
+      setBookPackage("");
       setView("biblioteca");
       flash(`“${created.title}” ya está guardado en la biblioteca.`);
     }catch(error){
@@ -519,7 +572,7 @@ export default function Home(){
     <header className="topbar"><button className="brand" onClick={()=>setView("biblioteca")}><span className="brandmark">B</span><span><b>Biblioteca virtual MJVC Mérida</b><small>Colección, préstamo y lectura en un solo lugar</small></span></button><nav>{[["biblioteca","Estantería"],["comunidad","Lectores"],["foro","Foro"]].map(([id,label])=><button key={id} className={view===id?"active":""} onClick={()=>setView(id as View)}>{label}</button>)}</nav><div className="profile-menu">{authLoading?<span className="login-link">Cargando…</span>:loggedIn?<>{currentUser?.role==="admin"&&<button className="upload-link" onClick={()=>setView("subir")}>＋ Subir libro</button>}<button className="me" onClick={()=>setModal("profile")}><Avatar name={currentName} color="#cf915f" small src={currentUser?.photoUrl}/><span>{currentName}{currentUser?.role==="admin"?" · Admin":""}</span></button><button className="logout" onClick={logout}>Cerrar sesión</button></>:<><button className="login-link" onClick={()=>setAuthView("login")}>Iniciar sesión</button><button className="upload-link" onClick={()=>setAuthView("signup")}>Registrarse</button></>}</div></header>
 
     {view==="biblioteca"&&<div className="library-layout">
-      <aside className="left-panel"><p className="eyebrow">EN TU MESITA</p><h2>{owned?"Una historia te espera":"Tu mesita está libre"}</h2>{owned?<><button className="owned-cover" style={{background:owned.cover}} onClick={()=>setView("lector")}><span>{owned.title}</span><small>{owned.author}</small><i>{owned.progress??0}%</i></button><div className="progress"><span style={{width:`${owned.progress??0}%`}}/></div><p className="muted">Página {owned.progress&&owned.pages>1?Math.min(owned.pages,Math.max(1,Math.round(1+(owned.progress/100)*(owned.pages-1)))):1} de {owned.pages}</p><div className="pair"><button className="primary" onClick={()=>setView("lector")}>Continuar</button><button className="secondary" onClick={openReturnModal}>Devolver</button></div></>:<p className="empty-note">Explora el estante y elige tu próxima lectura.</p>}<div className="leader-mini"><div className="section-title"><div><p className="eyebrow">ZONA DE LECTORES</p><h3>Quienes más han leído</h3></div><button onClick={()=>setView("comunidad")}>Ver todos →</button></div><div className="avatar-row">{people.map((p,i)=><button key={p.name} onClick={()=>setView("comunidad")}><span className="rank">{i+1}</span><Avatar name={p.name} color={p.color} small src={p.photoUrl}/></button>)}</div></div><button className="forum-card" onClick={()=>setView("foro")}><span>Conversaciones del club</span><b>Entrar al foro <i>↗</i></b></button></aside>
+      <aside className="left-panel"><p className="eyebrow">EN TU MESITA</p><h2>{owned?"Una historia te espera":"Tu mesita está libre"}</h2>{owned?<><button className="owned-cover" style={{background:owned.cover}} onClick={()=>setView("lector")}><span>{owned.title}</span><small>{owned.author}</small><i>{owned.progress??0}%</i></button><div className="progress"><span style={{width:`${owned.progress??0}%`}}/></div><p className="muted">{(owned.progress??0)<=0?"Portada":`Avance ${owned.progress}% · ${owned.pages} páginas`}</p><div className="pair"><button className="primary" onClick={()=>setView("lector")}>Continuar</button><button className="secondary" onClick={openReturnModal}>Devolver</button></div></>:<p className="empty-note">Explora el estante y elige tu próxima lectura.</p>}<div className="leader-mini"><div className="section-title"><div><p className="eyebrow">ZONA DE LECTORES</p><h3>Quienes más han leído</h3></div><button onClick={()=>setView("comunidad")}>Ver todos →</button></div><div className="avatar-row">{people.map((p,i)=><button key={p.name} onClick={()=>setView("comunidad")}><span className="rank">{i+1}</span><Avatar name={p.name} color={p.color} small src={p.photoUrl}/></button>)}</div></div><button className="forum-card" onClick={()=>setView("foro")}><span>Conversaciones del club</span><b>Entrar al foro <i>↗</i></b></button></aside>
       <section className="shelf-area"><div className="welcome"><div><p className="eyebrow">{loggedIn?`HOLA, ${currentName.toUpperCase()}`:"CATÁLOGO MJVC MÉRIDA"}</p><h1>¿Qué historia te llama hoy?</h1></div><p>{filtered.length} títulos en el estante</p></div><div className="filters"><label className="search"><span>⌕</span><input value={search} onChange={e=>{setSearch(e.target.value);setShelfPage(0)}} placeholder="Busca por título o autor"/></label><label><span>Año</span><select value={year} onChange={e=>{setYear(e.target.value);setShelfPage(0)}}><option value="">Todos</option>{[...new Set(books.map(b=>b.year))].sort((a,b)=>b-a).map(y=><option key={y}>{y}</option>)}</select></label><label><span>Tipo</span><select value={type} onChange={e=>{setType(e.target.value);setShelfPage(0)}}><option value="">Todos</option>{[...new Set(books.map(b=>b.type))].map(t=><option key={t}>{t}</option>)}</select></label>{(search||year||type)&&<button className="clear" onClick={()=>{setSearch("");setYear("");setType("");setShelfPage(0)}}>Limpiar</button>}</div><div className="shelf-card"><div className="shelf-head"><span>COLECCIÓN GENERAL · A–Z</span><span>Estante {shelfPage+1} de {shelfCount}</span></div><div className="books">{visibleBooks.length===0?<p className="empty-note">La biblioteca está vacía. Los libros que agregues a D1 aparecerán aquí.</p>:visibleBooks.map(book=>{const match=filtered.includes(book),width=Math.max(36,Math.min(72,30+book.pages/12)),titleSize=Math.round(Math.max(8,Math.min(15,width/(Math.sqrt(book.title.length)*1.45)))*10)/10;return <div key={book.id} className="book-shell" style={{width}} onMouseEnter={()=>setSelected(book)}><button className={`book ${match?"match":"dim"} ${book.available<1?"borrowed":""}`} style={{width:"100%",background:book.color}} onClick={()=>{setSelected(book);setModal("detail")}}><span style={{fontSize:titleSize}}>{book.title}</span><small>{book.author.split(" ").slice(-1)}</small>{book.available<1&&<i>•</i>}<div className="hover-cover" style={{background:book.cover}}><b>{book.title}</b><small>{book.author}</small></div></button>{currentUser?.role==="admin"&&<div className="book-admin-actions"><button type="button" title="Editar libro" aria-label={`Editar ${book.title}`} onClick={e=>{e.stopPropagation();setEditingBook(book)}}>✎</button><button type="button" title="Eliminar libro" aria-label={`Eliminar ${book.title}`} onClick={e=>{e.stopPropagation();deleteBook(book)}}><span className="trash-glyph" aria-hidden="true"/></button></div>}</div>})}</div><div className="wood"/></div><div className="shelf-pagination" aria-label="Cambiar de estante"><button disabled={shelfPage===0} onClick={()=>setShelfPage(page=>Math.max(0,page-1))} aria-label="Estante anterior">←</button><span>{shelfPage+1} / {shelfCount}</span><button disabled={shelfPage>=shelfCount-1} onClick={()=>setShelfPage(page=>Math.min(shelfCount-1,page+1))} aria-label="Estante siguiente">→</button></div></section>
       <aside className="right-panel">{selected?<><p className="eyebrow">LIBRO SELECCIONADO</p><div className="mini-cover" style={{background:selected.cover}}><span>{selected.title}</span></div><p className={`status ${selected.available?"yes":"no"}`}>{selected.available?`${selected.available} ${selected.available===1?"ejemplar disponible":"ejemplares disponibles"}`:"En préstamo"}</p><h2>{selected.title}</h2><p>{selected.author} · {selected.year}</p><div className="rating"><Stars rating={selected.rating}/><b>{selected.rating}</b></div><p className="synopsis">{selected.synopsis}</p><div className="facts"><span><b>{selected.pages}</b> páginas</span><span><b>{selected.type}</b> tipo</span></div><button className="primary wide" onClick={takeBook} disabled={!selected.available}>{selected.available?"Tomar este libro":"No disponible"}</button></>:<><p className="eyebrow">BIBLIOTECA VACÍA</p><h2>Aún no hay libros</h2><p className="synopsis">Cuando el administrador agregue el primer libro, aparecerá aquí.</p></>}</aside>
     </div>}
@@ -528,9 +581,9 @@ export default function Home(){
 
     {view==="foro"&&<section className="page forum"><div className="forum-hero"><div><p className="eyebrow">EL FORO</p><h1>Ideas que siguen creciendo</h1><p>Publica reflexiones sobre los libros de tu historial y participa en cualquier conversación.</p></div><button className="primary" onClick={()=>document.getElementById("composer")?.focus()}>Escribir una reflexión</button></div><div className="forum-layout"><div className="feed"><div className="composer"><Avatar name={currentName} color="#cf915f" src={currentUser?.photoUrl}/><div className="composer-body"><textarea id="composer" value={draft} onChange={e=>setDraft(e.target.value)} placeholder="¿Qué idea se quedó contigo después de leer?"/><div><select value={postBook} onChange={e=>setPostBook(e.target.value)} aria-label="Libro leído relacionado" disabled={readBooks.length===0}>{readBooks.length===0?<option value="">Sin libros disponibles</option>:readBooks.map(b=><option key={b.id}>{b.title}</option>)}</select><small className="history-note">Solo libros de tu historial</small><button className="primary" onClick={publish} disabled={publishing||!currentUser||!postBook}>{publishing?"Publicando…":currentUser?(postBook?"Publicar":"No hay libros para publicar"):"Inicia sesión para publicar"}</button></div></div></div>{posts.map(post=><article className="post" key={post.id}><div className="post-author"><Avatar name={post.user} color={post.color} src={post.photoUrl}/><div><b>{post.user}</b><span>sobre <strong>{post.book}</strong></span></div><time>{post.time}</time></div><p>{post.text}</p><div className="post-actions"><button aria-pressed={liked.includes(post.id)} className={liked.includes(post.id)?"liked":""} disabled={reactionBusy.includes(reactionKey("post",post.id,"❤️"))} onClick={()=>toggleReaction("post",post.id,"❤️")}>{liked.includes(post.id)?"♥":"♡"} {post.likes+(reactionCounts[reactionKey("post",post.id,"❤️")]||0)}</button><button onClick={()=>setRepliesOpen(repliesOpen===post.id?null:post.id)}>↩ {post.replies} respuestas</button><button onClick={()=>flash("Enlace copiado")}>↗ Compartir</button></div>{repliesOpen===post.id&&<div className="reply-box"><Avatar name={currentName} color="#cf915f" small src={currentUser?.photoUrl}/><input value={replyDrafts[post.id]||""} onChange={e=>setReplyDrafts(current=>({...current,[post.id]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter")submitReply(post.id)}} placeholder={`Responder a ${post.user}…`}/><button onClick={()=>submitReply(post.id)}>Responder</button></div>}</article>)}</div><aside className="forum-side"><h3>Lecturas que conversamos</h3>{books.slice(0,4).map((b,i)=><button key={b.id} onClick={()=>{setSelected(b);setView("biblioteca")}}><span style={{background:b.cover}}/><div><b>{b.title}</b><small>{posts.filter(post=>post.book===b.title).length} reflexiones</small></div></button>)}<div className="prompt-card"><span>Pregunta de la semana</span><p>¿Qué personaje te enseñó algo sobre ti?</p><button onClick={()=>document.getElementById("composer")?.focus()}>Responder en el foro →</button></div></aside></div></section>}
 
-    {view==="subir"&&currentUser?.role==="admin"&&<section className="page upload-page"><button className="back" onClick={()=>setView("biblioteca")}>← Volver al estante</button><div className="upload-wrap"><div className="upload-copy"><p className="eyebrow">SUMAR A LA COLECCIÓN</p><h1>Todo libro nuevo abre una puerta</h1><p>Sube el archivo completo y registra sus datos. Las páginas se detectan automáticamente en PDF; en TXT se estiman según la cantidad de palabras.</p><blockquote>“Una biblioteca no se hace; crece.”<span>— Augustine Birrell</span></blockquote></div><form className="book-form" onSubmit={submitBook}><div className="drop"><span>＋</span><b>Archivo completo del libro</b><small>PDF o TXT · máximo 25 MB · páginas automáticas</small><input name="file" required type="file" accept=".pdf,.txt,text/plain,application/pdf" aria-label="Archivo del libro" onChange={e=>handleBookFile(e.target.files?.[0])}/>{fileInfo&&<em className={detectedPages>0?"file-ready":"file-error"}>{fileInfo}</em>}</div><div className="field full"><label>Título</label><input name="title" required maxLength={180} placeholder="Ej. El jardín secreto"/></div><div className="field"><label>Autor</label><input name="author" required maxLength={140} placeholder="Nombre del autor"/></div><div className="field"><label>Año</label><input name="year" required type="number" min="1" max={new Date().getFullYear()+1} placeholder="2024"/></div><div className="field"><label>Número de páginas</label><input value={detectedPages||""} readOnly placeholder="Se calcula al subir el archivo"/><input type="hidden" name="pages" value={detectedPages||""}/><small>{detectedPages>0?"Calculado automáticamente desde el documento":"Selecciona primero el archivo"}</small></div><div className="field"><label>Tipo</label><select name="type" required><option>Libro</option><option>Revista</option><option>Álbum ilustrado</option><option>Biografía</option><option>Otro</option></select></div><div className="field"><label>Ejemplares disponibles</label><input name="copies" required type="number" defaultValue="1" min="1" max="1000"/></div><div className="field full"><label>Sinopsis</label><textarea name="synopsis" required maxLength={3000} placeholder="Cuéntanos de qué trata, sin revelar demasiado…"/></div><button className="primary submit" disabled={bookUploading||detectedPages<1}>{bookUploading?"Guardando libro…":detectedPages<1?"Esperando cálculo de páginas…":"Guardar libro en la biblioteca"}</button></form></div></section>}
+    {view==="subir"&&currentUser?.role==="admin"&&<section className="page upload-page"><button className="back" onClick={()=>setView("biblioteca")}>← Volver al estante</button><div className="upload-wrap"><div className="upload-copy"><p className="eyebrow">SUMAR A LA COLECCIÓN</p><h1>Todo libro nuevo abre una puerta</h1><p>Sube el archivo y lo reconstruiremos para el lector: extraemos el texto, recuperamos material visual cuando es posible y guardamos una versión web. El PDF original no se conserva.</p><blockquote>“Una biblioteca no se hace; crece.”<span>— Augustine Birrell</span></blockquote></div><form className="book-form" onSubmit={submitBook}><div className="drop"><span>＋</span><b>Archivo completo del libro</b><small>PDF o TXT · máximo 25 MB · reconstrucción automática</small><input name="file" required type="file" accept=".pdf,.txt,text/plain,application/pdf" aria-label="Archivo del libro" onChange={e=>handleBookFile(e.target.files?.[0])}/>{fileInfo&&<em className={detectedPages>0?"file-ready":"file-error"}>{fileInfo}</em>}</div><div className="field full"><label>Título</label><input name="title" required maxLength={180} placeholder="Ej. El jardín secreto"/></div><div className="field"><label>Autor</label><input name="author" required maxLength={140} placeholder="Nombre del autor"/></div><div className="field"><label>Año</label><input name="year" required type="number" min="1" max={new Date().getFullYear()+1} placeholder="2024"/></div><div className="field"><label>Número de páginas</label><input value={detectedPages||""} readOnly placeholder="Se calcula al subir el archivo"/><input type="hidden" name="pages" value={detectedPages||""}/><small>{detectedPages>0?"Páginas reconstruidas desde el documento":"Selecciona primero el archivo"}</small></div><div className="field"><label>Tipo</label><select name="type" required><option>Libro</option><option>Revista</option><option>Álbum ilustrado</option><option>Biografía</option><option>Otro</option></select></div><div className="field"><label>Ejemplares disponibles</label><input name="copies" required type="number" defaultValue="1" min="1" max="1000"/></div><div className="field full"><label>Sinopsis</label><textarea name="synopsis" required maxLength={3000} placeholder="Cuéntanos de qué trata, sin revelar demasiado…"/></div><button className="primary submit" disabled={bookUploading||detectedPages<1||!bookPackage}>{bookUploading?"Guardando libro…":detectedPages<1?"Reconstruyendo libro…":"Guardar libro reconstruido"}</button></form></div></section>}
 
-    {view==="lector"&&owned&&<section className="reader"><div className="reader-bar"><button onClick={()=>setView("biblioteca")}>← Cerrar lector</button><div className="reader-title"><b>{owned.title}</b><span>{owned.author}</span></div><div className="reader-tools"><small>Progreso automático</small><button type="button" onClick={()=>changeReaderZoom(-.1)} disabled={readerZoom<=.7} aria-label="Alejar">−</button><span>{Math.round(readerZoom*100)}%</span><button type="button" onClick={()=>changeReaderZoom(.1)} disabled={readerZoom>=2} aria-label="Acercar">+</button></div></div><div className="reader-stage" onPointerDown={handleReaderPointerDown} onPointerMove={handleReaderPointerMove} onPointerUp={handleReaderPointerEnd} onPointerCancel={handleReaderPointerEnd} onWheel={handleReaderWheel}><div className="reader-document-center">{readerLoading?<div className="reader-message">Preparando el libro…</div>:readerError?<div className="reader-message error">{readerError}</div>:readerKind==="pdf"?<div className="reader-page pdf-reader-page"><canvas ref={readerCanvasRef}/></div>:readerKind==="text"?<div className="reader-page text-reader-page"><p style={{fontSize:`${19*readerZoom}px`}}>{readerTextPages[readerPage-1]||""}</p></div>:<div className="reader-message">Abriendo libro…</div>}</div></div><div className="reader-controls"><button onClick={()=>goReaderPage(readerPage-1)} disabled={readerPage<=1} aria-label="Página anterior">‹</button><div><input type="range" min="1" max={Math.max(1,readerTotalPages)} value={readerPage} onChange={e=>goReaderPage(Number(e.target.value))}/><span>Página {readerPage} de {Math.max(1,readerTotalPages)}</span></div><button onClick={()=>goReaderPage(readerPage+1)} disabled={readerPage>=readerTotalPages} aria-label="Página siguiente">›</button></div></section>}
+    {view==="lector"&&owned&&<section className="reader reader-book-mode"><div className="reader-bar"><button onClick={()=>setView("biblioteca")}>← Cerrar lector</button><div className="reader-title"><b>{owned.title}</b><span>{readerPage===0?"Portada":`Páginas ${readerPage}–${Math.min(readerTotalPages,readerPage+1)} de ${readerTotalPages}`}</span></div><div className="reader-tools"><small>Zoom</small><button type="button" onClick={()=>changeReaderZoom(-.1)} disabled={readerZoom<=.7} aria-label="Alejar">−</button><span>{Math.round(readerZoom*100)}%</span><button type="button" onClick={()=>changeReaderZoom(.1)} disabled={readerZoom>=2} aria-label="Acercar">+</button></div></div><div className="reader-stage book-stage" onPointerDown={handleReaderPointerDown} onPointerMove={handleReaderPointerMove} onPointerUp={handleReaderPointerEnd} onPointerCancel={handleReaderPointerEnd} onWheel={handleReaderWheel}>{readerLoading?<div className="reader-message">Reconstruyendo la lectura…</div>:readerError?<div className="reader-message error">{readerError}</div>:<><button className="reader-side-nav prev" onClick={previousReaderSpread} disabled={readerPage===0} aria-label="Páginas anteriores">‹</button><div className="reader-book-scene"><div className="reader-zoom-shell" style={{transform:`scale(${readerZoom})`}}>{readerPage===0?<div className="reader-cover-shell"><button className="reader-cover" style={{background:owned.cover}} onClick={nextReaderSpread} aria-label="Abrir libro">{readerPages[0]?.artwork&&<img className="reader-cover-art" src={readerPages[0].artwork} alt="Portada recuperada del documento"/>}<span className="reader-cover-kicker">Biblioteca MJVC Mérida</span><strong>{owned.title}</strong><small>{owned.author}</small><i>Haz clic para abrir</i></button></div>:<div key={readerPage} className={`reader-spread turn-${readerTurn}`}><BookSheet page={readerPages[readerPage-1]} pageNumber={readerPage} side="left" zoom={1}/><div className="reader-gutter"/><BookSheet page={readerPages[readerPage]} pageNumber={readerPage+1<=readerTotalPages?readerPage+1:undefined} side="right" zoom={1}/></div>}</div></div><button className="reader-side-nav next" onClick={nextReaderSpread} disabled={readerTotalPages<1||(readerPage!==0&&readerPage>=lastSpreadStart)} aria-label={readerPage===0?"Abrir libro":"Páginas siguientes"}>›</button></>}</div><div className="reader-book-footer"><span>{readerPage===0?"Portada":`Leyendo ${Math.min(readerTotalPages,readerPage+1)} de ${readerTotalPages}`}</span><small>El progreso se guarda automáticamente · Pellizca o usa el trackpad para hacer zoom</small></div></section>}
 
     {modal==="detail"&&selected&&<div className="modal-back" onClick={()=>setModal(null)}><div className="book-modal" onClick={e=>e.stopPropagation()}><button className="close" onClick={()=>setModal(null)}>×</button><div className="modal-cover" style={{background:selected.cover}}><span>{selected.title}</span><small>{selected.author}</small></div><div className="modal-copy"><p className="eyebrow">{selected.type.toUpperCase()}</p><h2>{selected.title}</h2><p className="by">{selected.author} · {selected.year}</p><div className="rating"><Stars rating={selected.rating}/><b>{selected.rating}</b><span>({selected.reads} {selected.reads===1?"lectura":"lecturas"})</span></div><p>{selected.synopsis}</p><div className="meta-row"><span><b>{selected.pages}</b> páginas</span><span><b>{selected.available}/{selected.copies}</b> disponibles</span></div><button className="primary wide" disabled={!selected.available} onClick={takeBook}>{selected.available?"Tomar este libro":"En préstamo"}</button></div></div></div>}
     {modal==="return"&&owned&&<div className="modal-back"><form className="return-modal" onSubmit={returnBook}><button type="button" className="close" onClick={()=>setModal(null)}>×</button><p className="eyebrow">ANTES DE DEVOLVERLO</p><h2>Deja una huella para quien sigue</h2><p>Tu calificación ayuda a la comunidad. También puedes responder preguntas de lectores anteriores y dejar una nueva.</p><div className="reader-questions"><div className="question-heading"><b>Preguntas de lectores anteriores</b><small>Solo pedimos responder un máximo de 3 preguntas. Si existen más, las demás no son obligatorias y quedarán para futuras lecturas.</small></div>{returnQuestionsLoading?<p className="question-empty">Cargando preguntas…</p>:returnQuestions.length===0?<p className="question-empty">Todavía no hay preguntas pendientes para ti.</p>:returnQuestions.map((question,index)=><label key={question.id}><span>{index+1}. {question.body}</span><small>Propuesta por {question.user}</small><textarea name={`answer-${question.id}`} required placeholder="Escribe tu respuesta…"/></label>)}{returnExtraQuestions>0&&<p className="question-extra">Hay {returnExtraQuestions} {returnExtraQuestions===1?"pregunta adicional":"preguntas adicionales"}; no necesitas responderlas ahora.</p>}</div><label>Propón una pregunta para un futuro lector <small className="optional-note">Opcional</small><textarea name="newQuestion" maxLength={500} placeholder="¿Qué te gustaría preguntarles? Puedes dejarlo vacío."/></label><label>¿Cómo calificas esta lectura?<Stars rating={returnRating} onSelect={setReturnRating}/><small className="rating-help">{returnRating?`${returnRating} de 5 estrellas`:"Selecciona de 1 a 5 estrellas"}</small></label><button className="primary wide" disabled={returnQuestionsLoading}>Completar devolución</button></form></div>}

@@ -5,6 +5,7 @@ import { answers, books, loans, posts, questions } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
 
 const MAX_BOOK_BYTES = 25 * 1024 * 1024;
+const MAX_PACKAGE_BYTES = 18 * 1024 * 1024;
 const ALLOWED_BOOK_TYPES = new Map([
   ["application/pdf", "pdf"],
   ["text/plain", "txt"],
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
     const pages = parsePositiveInteger(readText(formData, "pages"), "El número de páginas");
     const copies = parsePositiveInteger(readText(formData, "copies"), "Los ejemplares");
     const value = formData.get("file");
+    const contentPackage = readText(formData, "contentPackage");
 
     if (title.length < 1 || title.length > 180) {
       return Response.json(
@@ -141,18 +143,65 @@ export async function POST(request: Request) {
       .slice(0, 70)
       .toLowerCase() || "libro";
 
-    uploadedKey = `books/${crypto.randomUUID()}-${safeTitle}.${extension}`;
+    if (!contentPackage) {
+      return Response.json(
+        {
+          error:
+            "No se pudo reconstruir el contenido del libro. Vuelve a seleccionar el archivo antes de guardar.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (new TextEncoder().encode(contentPackage).byteLength > MAX_PACKAGE_BYTES) {
+      return Response.json(
+        {
+          error:
+            "La versión reconstruida del libro es demasiado grande. Prueba con un archivo más ligero.",
+        },
+        { status: 400 },
+      );
+    }
+
+    let parsedPackage: unknown;
+    try {
+      parsedPackage = JSON.parse(contentPackage);
+    } catch {
+      return Response.json(
+        { error: "El contenido reconstruido del libro no es válido." },
+        { status: 400 },
+      );
+    }
+
+    if (
+      !parsedPackage ||
+      typeof parsedPackage !== "object" ||
+      !Array.isArray((parsedPackage as { pages?: unknown[] }).pages) ||
+      (parsedPackage as { pages: unknown[] }).pages.length !== pages
+    ) {
+      return Response.json(
+        {
+          error:
+            "La cantidad de páginas reconstruidas no coincide con la ficha del libro.",
+        },
+        { status: 400 },
+      );
+    }
+
+    uploadedKey = `books/${crypto.randomUUID()}-${safeTitle}.mjvc.json`;
     const bucket = runtimeEnv().BOOK_FILES;
 
-    await bucket.put(uploadedKey, value.stream(), {
+    await bucket.put(uploadedKey, contentPackage, {
       httpMetadata: {
-        contentType,
+        contentType: "application/vnd.mjvc.book+json; charset=utf-8",
         cacheControl: "private, max-age=3600",
       },
       customMetadata: {
         originalName: value.name,
+        originalType: contentType,
         uploadedBy: session.id,
         title,
+        reconstruction: "v1",
       },
     });
 
