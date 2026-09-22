@@ -181,79 +181,127 @@ export default function Home(){
       flash(error instanceof Error?error.message:"No se pudo tomar el libro.");
     }
   };
-  const pageFromProgress=(progress:number,total:number)=>progress<=0||total<=1?1:Math.min(total,Math.max(1,Math.round(1+(progress/100)*(total-1))));
+  const linesToPage=(rawLines:string[]):ReconstructedPage=>{
+    const lines=rawLines.map(line=>line.replace(/\s+/g," ").trim()).filter(Boolean);
+    let heading:string|null=null;
+    if(lines.length>1&&lines[0].length<=90&&!/[.!?]$/.test(lines[0])){
+      heading=lines.shift()||null;
+    }
+    const paragraphs:string[]=[];
+    let current="";
+    for(const line of lines){
+      current=current?`${current} ${line}`:line;
+      if(/[.!?…]["'”’)]?$/.test(line)||current.length>520){
+        paragraphs.push(current.trim());
+        current="";
+      }
+    }
+    if(current.trim())paragraphs.push(current.trim());
+    if(paragraphs.length===0&&heading){
+      paragraphs.push(heading);
+      heading=null;
+    }
+    return {heading,paragraphs};
+  };
+  const reconstructText=(text:string):ReconstructedBook=>{
+    const words=text.trim()?text.trim().split(/\s+/):[];
+    const pages:ReconstructedPage[]=[];
+    for(let index=0;index<words.length;index+=300){
+      pages.push({heading:null,paragraphs:[words.slice(index,index+300).join(" ")]});
+    }
+    if(pages.length===0)pages.push({heading:null,paragraphs:["Este archivo no contiene texto visible."]});
+    return {version:1,source:"txt",pages};
+  };
+  const reconstructPdf=async(data:ArrayBuffer,withArtwork:boolean):Promise<ReconstructedBook>=>{
+    const [pdfjs,workerModule]=await Promise.all([import("pdfjs-dist"),import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
+    pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
+    const pdf=await pdfjs.getDocument({data}).promise;
+    const pages:ReconstructedPage[]=[];
+    const imageOps=new Set([pdfjs.OPS.paintImageXObject,pdfjs.OPS.paintInlineImageXObject,pdfjs.OPS.paintImageMaskXObject].filter((value):value is number=>typeof value==="number"));
+    for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber++){
+      const page=await pdf.getPage(pageNumber);
+      const content=await page.getTextContent();
+      const lines:string[]=[];
+      let line="";
+      for(const item of content.items as any[]){
+        if(!item||typeof item.str!=="string")continue;
+        const fragment=item.str.trim();
+        if(fragment)line=line?`${line} ${fragment}`:fragment;
+        if(item.hasEOL&&line){lines.push(line);line="";}
+      }
+      if(line)lines.push(line);
+      const rebuilt=linesToPage(lines);
+      let artwork:string|null=null;
+      if(withArtwork){
+        try{
+          const operatorList=await page.getOperatorList();
+          const hasImages=operatorList.fnArray.some((operation:number)=>imageOps.has(operation));
+          if(hasImages){
+            const viewport=page.getViewport({scale:.55});
+            const canvas=document.createElement("canvas");
+            canvas.width=Math.max(1,Math.floor(viewport.width));
+            canvas.height=Math.max(1,Math.floor(viewport.height));
+            const context=canvas.getContext("2d");
+            if(context){
+              await page.render({canvasContext:context,viewport}).promise;
+              artwork=canvas.toDataURL("image/jpeg",.62);
+            }
+          }
+        }catch(error){
+          console.warn("No se pudo recuperar la ilustración de una página",error);
+        }
+      }
+      pages.push({...rebuilt,artwork});
+    }
+    return {version:1,source:"pdf",pages};
+  };
+  const spreadFromProgress=(progress:number,total:number)=>{
+    if(progress<=0||total<1)return 0;
+    const approximate=Math.min(total,Math.max(1,Math.ceil((progress/100)*total)));
+    return approximate%2===0?Math.max(1,approximate-1):approximate;
+  };
   useEffect(()=>{
     let cancelled=false;
     if(view!=="lector"||!owned)return ()=>{cancelled=true};
     setReaderLoading(true);
     setReaderError("");
-    setReaderKind(null);
-    setReaderTextPages([]);
+    setReaderPages([]);
     setReaderZoom(1);
-    pdfDocRef.current=null;
     fetch(`/api/books/file?id=${owned.id}`)
       .then(async response=>{
-        if(!response.ok)throw new Error(await response.text()||"No se pudo abrir el archivo");
+        if(!response.ok)throw new Error(await response.text()||"No se pudo abrir el libro");
         const contentType=response.headers.get("content-type")||"";
-        if(contentType.includes("pdf")){
-          const [pdfjs,workerModule]=await Promise.all([import("pdfjs-dist"),import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
-          pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
-          const pdf=await pdfjs.getDocument({data:await response.arrayBuffer()}).promise;
-          if(cancelled)return;
-          pdfDocRef.current=pdf;
-          setReaderKind("pdf");
-          setReaderTotalPages(pdf.numPages);
-          setReaderPage(pageFromProgress(owned.progress||0,pdf.numPages));
+        let reconstructed:ReconstructedBook;
+        if(contentType.includes("mjvc.book+json")||contentType.includes("application/json")){
+          reconstructed=await response.json() as ReconstructedBook;
+        }else if(contentType.includes("pdf")){
+          reconstructed=await reconstructPdf(await response.arrayBuffer(),true);
         }else{
-          const text=await response.text();
-          const words=text.trim()?text.trim().split(/\s+/):[];
-          const pages:string[]=[];
-          for(let index=0;index<words.length;index+=300)pages.push(words.slice(index,index+300).join(" "));
-          if(pages.length===0)pages.push("Este archivo no contiene texto visible.");
-          if(cancelled)return;
-          setReaderTextPages(pages);
-          setReaderKind("text");
-          setReaderTotalPages(pages.length);
-          setReaderPage(pageFromProgress(owned.progress||0,pages.length));
+          reconstructed=reconstructText(await response.text());
         }
+        if(!reconstructed||!Array.isArray(reconstructed.pages)||reconstructed.pages.length===0)throw new Error("El libro no contiene páginas reconstruibles.");
+        if(cancelled)return;
+        setReaderPages(reconstructed.pages);
+        setReaderTotalPages(reconstructed.pages.length);
+        setReaderPage(spreadFromProgress(owned.progress||0,reconstructed.pages.length));
       })
       .catch(error=>{if(!cancelled)setReaderError(error instanceof Error?error.message:"No se pudo abrir el libro.")})
       .finally(()=>{if(!cancelled)setReaderLoading(false)});
     return ()=>{cancelled=true};
   },[view,owned?.id]);
   useEffect(()=>{
-    let cancelled=false;
-    let renderTask:any=null;
-    if(readerKind!=="pdf"||!pdfDocRef.current||!readerCanvasRef.current)return ()=>{cancelled=true};
-    const render=async()=>{
-      try{
-        const page=await pdfDocRef.current.getPage(readerPage);
-        if(cancelled||!readerCanvasRef.current)return;
-        const canvas=readerCanvasRef.current;
-        const viewport=page.getViewport({scale:1.2*readerZoom});
-        const context=canvas.getContext("2d");
-        if(!context)return;
-        canvas.width=Math.floor(viewport.width);
-        canvas.height=Math.floor(viewport.height);
-        renderTask=page.render({canvasContext:context,viewport});
-        await renderTask.promise;
-      }catch(error){
-        if(!cancelled&&!(error instanceof Error&&error.name==="RenderingCancelledException"))setReaderError(error instanceof Error?error.message:"No se pudo mostrar esta página.");
-      }
-    };
-    render();
-    return ()=>{cancelled=true;try{renderTask?.cancel()}catch{}};
-  },[readerKind,readerPage,readerTotalPages,readerLoading,readerZoom]);
-  useEffect(()=>{
     if(view!=="lector"||!loanId||readerTotalPages<1)return;
-    const progress=readerTotalPages<=1?0:Math.round(((readerPage-1)/(readerTotalPages-1))*100);
+    const lastVisible=readerPage===0?0:Math.min(readerTotalPages,readerPage+1);
+    const progress=lastVisible===0?0:Math.round((lastVisible/readerTotalPages)*100);
     setOwned(current=>current?{...current,progress}:current);
     const timer=setTimeout(()=>{
       fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress})}).catch(error=>console.error("No se pudo guardar el progreso",error));
     },450);
     return ()=>clearTimeout(timer);
   },[view,loanId,readerPage,readerTotalPages]);
-  const goReaderPage=(page:number)=>setReaderPage(Math.min(readerTotalPages,Math.max(1,page)));
+  const lastSpreadStart=readerTotalPages<1?0:(readerTotalPages%2===0?Math.max(1,readerTotalPages-1):readerTotalPages);
+  const previousReaderSpread=()=>setReaderPage(current=>current<=1?0:Math.max(1,current-2));
+  const nextReaderSpread=()=>setReaderPage(current=>current===0?1:Math.min(lastSpreadStart,current+2));
   const changeReaderZoom=(delta:number)=>setReaderZoom(current=>Math.min(2,Math.max(.7,Math.round((current+delta)*10)/10)));
   const clampReaderZoom=(value:number)=>Math.min(2,Math.max(.7,Math.round(value*20)/20));
   const pinchDistance=()=>{
