@@ -2,9 +2,11 @@ import { eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { books, loans, users } from "../../../db/schema";
 import { computeAllUserPagesRead, computeUniqueCompletedReadCounts, persistUserPagesRead } from "../../reading-stats";
+import { ensureWorkflowSchema } from "../../workflow-server";
 
 export async function GET() {
   try {
+    await ensureWorkflowSchema();
     const db = getDb();
 
     const [bookRows, userRows, activeLoanRows, pagesReadByUser, readCounts] =
