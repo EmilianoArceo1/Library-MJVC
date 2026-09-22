@@ -186,6 +186,51 @@ export async function DELETE(request: Request) {
       .bind(id)
       .all<{ bookId: number; amount: number }>();
 
+    const now = Date.now();
+    const pendingRegistration = await env.DB.prepare(
+      "SELECT id FROM account_requests WHERE user_id = ? AND status = 'pending' LIMIT 1",
+    )
+      .bind(id)
+      .first<{ id: number }>();
+    if (pendingRegistration) {
+      await env.DB.prepare(
+        `UPDATE account_requests
+         SET status = 'rejected', updated_at = ?, last_decision_by = ?, last_decision_at = ?
+         WHERE id = ?`,
+      )
+        .bind(now, session.name, now, pendingRegistration.id)
+        .run();
+      await env.DB.prepare(
+        `INSERT INTO request_decisions
+          (request_type, request_id, decision, actor_id, actor_name, message, created_at)
+         VALUES ('registration', ?, 'rejected', ?, ?, 'Cuenta eliminada por el administrador.', ?)`,
+      )
+        .bind(String(pendingRegistration.id), session.id, session.name, now)
+        .run();
+    }
+
+    const pendingBookRequests = await env.DB.prepare(
+      "SELECT id FROM book_upload_requests WHERE user_id = ? AND status = 'pending'",
+    )
+      .bind(id)
+      .all<{ id: number }>();
+    for (const requestRow of pendingBookRequests.results) {
+      await env.DB.prepare(
+        `UPDATE book_upload_requests
+         SET status = 'rejected', updated_at = ?, last_decision_by = ?, last_decision_at = ?
+         WHERE id = ?`,
+      )
+        .bind(now, session.name, now, requestRow.id)
+        .run();
+      await env.DB.prepare(
+        `INSERT INTO request_decisions
+          (request_type, request_id, decision, actor_id, actor_name, message, created_at)
+         VALUES ('book', ?, 'rejected', ?, ?, 'Solicitud cerrada al eliminar la cuenta.', ?)`,
+      )
+        .bind(String(requestRow.id), session.id, session.name, now)
+        .run();
+    }
+
     for (const row of activeLoans.results) {
       await env.DB.prepare(
         `UPDATE books
@@ -234,8 +279,15 @@ export async function DELETE(request: Request) {
       ["DELETE FROM users WHERE id = ?", id],
     ] as const;
 
+    const optionalCleanup = new Set([
+      "DELETE FROM user_preferences WHERE user_id = ?",
+    ]);
     for (const [sql, value] of cleanup) {
-      await env.DB.prepare(sql).bind(value).run();
+      try {
+        await env.DB.prepare(sql).bind(value).run();
+      } catch (error) {
+        if (!optionalCleanup.has(sql)) throw error;
+      }
     }
 
     return Response.json({ ok: true, id, name: target.name });
