@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     }
 
     await ensureWorkflowSchema();
-    const result = await env.DB.prepare(
+    await env.DB.prepare(
       `SELECT
         n.id,
         n.title,
@@ -151,10 +151,7 @@ export async function POST(request: Request) {
       .bind(title, body, session.id, session.name, now)
       .run();
 
-    return Response.json({
-      ok: true,
-      recipients: result.meta.changes ?? 0,
-    });
+    return Response.json({ ok: true });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "No se pudo enviar el aviso.";
