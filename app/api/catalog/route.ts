@@ -18,6 +18,7 @@ export async function GET() {
             name: users.name,
             pagesRead: users.pagesRead,
             role: users.role,
+            approvalStatus: users.approvalStatus,
             photoKey: users.photoKey,
           })
           .from(users)
