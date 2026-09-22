@@ -62,6 +62,7 @@ export async function GET() {
         readers: [],
       })),
       people: userRows
+        .filter((user) => user.approvalStatus === "approved")
         .map((user) => ({
           id: user.id,
           name: user.name,
