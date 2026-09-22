@@ -1703,3 +1703,270 @@
     animation-duration:1ms!important;
   }
 }
+
+
+/* Seamless cover/final transitions v3 */
+.reader-artwork{
+  max-height:28%!important;
+}
+
+/* Never render a fake printed inside cover during front-cover movement. */
+.reader-cover-back{
+  display:none!important;
+}
+.reader-cover-shell.opening .reader-cover-pageblock,
+.reader-cover-shell.closing .reader-cover-pageblock{
+  animation:none!important;
+  opacity:0!important;
+}
+.reader-cover-shell.opening .reader-cover-underlay{
+  opacity:1!important;
+  animation:readerSpreadAppearLate 920ms cubic-bezier(.16,.74,.18,1) both!important;
+}
+.reader-cover-shell.closing .reader-cover-underlay{
+  opacity:1!important;
+  animation:readerSpreadDisappearLate 920ms cubic-bezier(.16,.74,.18,1) both!important;
+}
+@keyframes readerSpreadAppearLate{
+  0%,26%{opacity:0}
+  52%{opacity:.34}
+  76%{opacity:.86}
+  100%{opacity:1}
+}
+@keyframes readerSpreadDisappearLate{
+  0%,58%{opacity:1}
+  78%{opacity:.78}
+  94%{opacity:.16}
+  100%{opacity:0}
+}
+
+/* The hinge remains the only moving geometry in both directions. */
+.reader-cover-shell.opening .reader-cover-hinge{
+  animation:readerHingeOpenV3 920ms cubic-bezier(.15,.76,.18,1) both!important;
+}
+.reader-cover-shell.closing .reader-cover-hinge{
+  animation:readerHingeCloseV3 920ms cubic-bezier(.15,.76,.18,1) both!important;
+}
+@keyframes readerHingeOpenV3{
+  0%{transform:rotateY(0deg)}
+  20%{transform:rotateY(-20deg)}
+  44%{transform:rotateY(-70deg)}
+  67%{transform:rotateY(-120deg)}
+  86%{transform:rotateY(-160deg)}
+  100%{transform:rotateY(-180deg)}
+}
+@keyframes readerHingeCloseV3{
+  0%{transform:rotateY(-180deg)}
+  18%{transform:rotateY(-158deg)}
+  42%{transform:rotateY(-108deg)}
+  66%{transform:rotateY(-58deg)}
+  86%{transform:rotateY(-18deg)}
+  100%{transform:rotateY(0deg)}
+}
+
+/* Direct last-spread -> closed back-cover transition. */
+.reader-final-close-transition{
+  position:relative;
+  width:min(920px,calc(100vw - 220px));
+  min-width:700px;
+  height:min(650px,calc(100vh - 190px));
+  min-height:500px;
+  perspective:2200px;
+  transform-style:preserve-3d;
+}
+.reader-final-close-transition>.reader-spread{
+  position:absolute;
+  inset:0;
+  width:100%!important;
+  min-width:0!important;
+  height:100%!important;
+  min-height:0!important;
+  animation:readerLastSpreadFade 940ms ease both!important;
+}
+@keyframes readerLastSpreadFade{
+  0%,70%{opacity:1}
+  88%{opacity:.72}
+  100%{opacity:0}
+}
+.reader-final-close-cover{
+  position:absolute;
+  top:0;
+  bottom:0;
+  right:0;
+  width:calc(50% - 2px);
+  z-index:40;
+  transform-origin:left center;
+  transform-style:preserve-3d;
+  animation:readerFinalCoverClose 940ms cubic-bezier(.15,.76,.18,1) both;
+}
+.reader-final-close-face{
+  position:absolute;
+  inset:0;
+  overflow:hidden;
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
+  transform-style:preserve-3d;
+}
+.reader-final-close-face.inner{
+  transform:rotateY(0deg) translateZ(.6px);
+}
+.reader-final-close-face.outer{
+  transform:rotateY(180deg) translateZ(.6px);
+  border-radius:16px 3px 3px 16px;
+  color:#f7eadb;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  padding:44px 36px;
+  box-sizing:border-box;
+  text-align:center;
+  box-shadow:
+    inset 13px 0 #ffffff12,
+    inset -2px 0 #00000018,
+    -8px 10px 0 #15100dc0,
+    0 24px 44px #0007;
+}
+.reader-final-close-face.outer>*{position:relative;z-index:2}
+.reader-final-close-face.outer>span{
+  position:absolute;
+  top:34px;
+  left:30px;
+  right:30px;
+  font:700 9px Arial,sans-serif;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  opacity:.78;
+}
+.reader-final-close-face.outer strong{font:700 46px/1 Georgia,serif}
+.reader-final-close-face.outer b{font:700 20px/1.2 Georgia,serif}
+.reader-final-close-face.outer small{font:12px Arial,sans-serif}
+.reader-final-close-face.inner .reader-sheet{
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  border-radius:3px 16px 16px 3px!important;
+}
+@keyframes readerFinalCoverClose{
+  0%{transform:rotateY(0deg)}
+  18%{transform:rotateY(-18deg)}
+  44%{transform:rotateY(-72deg)}
+  68%{transform:rotateY(-124deg)}
+  88%{transform:rotateY(-164deg)}
+  100%{transform:rotateY(-180deg)}
+}
+
+/* Final resting state contains only the closed back cover on the left. */
+.reader-finish-layout{
+  position:relative!important;
+  width:min(920px,calc(100vw - 220px))!important;
+  min-width:700px!important;
+  height:min(650px,calc(100vh - 190px))!important;
+  min-height:500px!important;
+  perspective:none!important;
+}
+.reader-closed-back-cover{
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:0;
+  width:calc(50% - 2px);
+  border-radius:16px 3px 3px 16px;
+  color:#f7eadb;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  padding:44px 36px;
+  box-sizing:border-box;
+  text-align:center;
+  box-shadow:
+    inset 13px 0 #ffffff12,
+    inset -2px 0 #00000018,
+    -8px 10px 0 #15100dc0,
+    0 24px 44px #0007;
+}
+.reader-closed-back-cover:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(235deg,#00000022,transparent 34%,#ffffff0d 78%);
+  pointer-events:none;
+}
+.reader-closed-back-cover>*{position:relative;z-index:2}
+.reader-closed-back-cover>span{
+  position:absolute;
+  top:34px;
+  left:30px;
+  right:30px;
+  font:700 9px Arial,sans-serif;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  opacity:.78;
+}
+.reader-closed-back-cover strong{font:700 46px/1 Georgia,serif}
+.reader-closed-back-cover b{font:700 20px/1.2 Georgia,serif}
+.reader-closed-back-cover small{font:12px Arial,sans-serif}
+
+/* Kill obsolete final-spread/inside-cover visuals so they can never flash. */
+.reader-final-book,
+.reader-final-spread,
+.reader-final-cover,
+.reader-inside-cover,
+.reader-ending-spread{
+  display:none!important;
+}
+
+/* Each page gets its own scale, with no shared visual baseline. */
+.reader-sheet-inner{
+  transition:none!important;
+}
+.reader-sheet p{
+  font-size:1em!important;
+}
+.reader-sheet h3{
+  font-size:1.34em!important;
+}
+.reader-artwork{
+  object-fit:contain;
+}
+
+/* Keep sparse pages comfortably larger while dense pages still shrink to fit. */
+.reader-sheet-inner{
+  line-height:1.54;
+}
+.reader-sheet-inner p{
+  line-height:1.54;
+}
+
+@media(max-width:900px){
+  .reader-final-close-transition,
+  .reader-finish-layout{
+    width:720px!important;
+    min-width:620px!important;
+    height:540px!important;
+    min-height:540px!important;
+  }
+}
+@media(max-width:650px){
+  .reader-final-close-transition,
+  .reader-finish-layout{
+    width:580px!important;
+    min-width:580px!important;
+    height:470px!important;
+    min-height:470px!important;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .reader-cover-shell.opening .reader-cover-hinge,
+  .reader-cover-shell.closing .reader-cover-hinge,
+  .reader-cover-shell.opening .reader-cover-underlay,
+  .reader-cover-shell.closing .reader-cover-underlay,
+  .reader-final-close-cover,
+  .reader-final-close-transition>.reader-spread{
+    animation-duration:1ms!important;
+  }
+}
