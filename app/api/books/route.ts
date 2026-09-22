@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { books } from "../../../db/schema";
+import { answers, books, loans, posts, questions } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
 
 const MAX_BOOK_BYTES = 25 * 1024 * 1024;
@@ -208,6 +209,178 @@ export async function POST(request: Request) {
 
     const message =
       error instanceof Error ? error.message : "No se pudo guardar el libro.";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}
+
+
+export async function PATCH(request: Request) {
+  try {
+    const session = await getSessionUser(request);
+    if (!session || session.role !== "admin") {
+      return Response.json(
+        { error: "Solo un administrador puede editar libros." },
+        { status: 403 },
+      );
+    }
+
+    const payload = (await request.json()) as {
+      id?: number;
+      title?: string;
+      author?: string;
+      year?: number;
+      type?: string;
+      synopsis?: string;
+      copies?: number;
+    };
+
+    const id = Number(payload.id);
+    const title = payload.title?.trim() ?? "";
+    const author = payload.author?.trim() ?? "";
+    const type = payload.type?.trim() ?? "";
+    const synopsis = payload.synopsis?.trim() ?? "";
+    const year = Number(payload.year);
+    const copies = Number(payload.copies);
+
+    if (!Number.isInteger(id) || id < 1) {
+      return Response.json({ error: "Libro inválido." }, { status: 400 });
+    }
+    if (!title || title.length > 180 || !author || author.length > 140) {
+      return Response.json({ error: "Revisa el título y el autor." }, { status: 400 });
+    }
+    if (!type || type.length > 60 || !synopsis || synopsis.length > 3000) {
+      return Response.json({ error: "Revisa el tipo y la sinopsis." }, { status: 400 });
+    }
+    if (!Number.isInteger(year) || year < 1 || year > new Date().getFullYear() + 1) {
+      return Response.json({ error: "El año no es válido." }, { status: 400 });
+    }
+    if (!Number.isInteger(copies) || copies < 1 || copies > 1000) {
+      return Response.json({ error: "Los ejemplares no son válidos." }, { status: 400 });
+    }
+
+    const db = getDb();
+    const [current] = await db
+      .select()
+      .from(books)
+      .where(eq(books.id, id))
+      .limit(1);
+
+    if (!current) {
+      return Response.json({ error: "Ese libro ya no existe." }, { status: 404 });
+    }
+
+    const borrowed = Math.max(0, current.totalCopies - current.availableCopies);
+    if (copies < borrowed) {
+      return Response.json(
+        { error: `No puedes bajar a ${copies} ejemplares porque hay ${borrowed} prestados.` },
+        { status: 409 },
+      );
+    }
+
+    const [updated] = await db
+      .update(books)
+      .set({
+        title,
+        author,
+        year,
+        type,
+        synopsis,
+        totalCopies: copies,
+        availableCopies: copies - borrowed,
+      })
+      .where(eq(books.id, id))
+      .returning();
+
+    return Response.json({
+      book: {
+        id: updated.id,
+        title: updated.title,
+        author: updated.author,
+        year: updated.year,
+        pages: updated.pages,
+        synopsis: updated.synopsis,
+        type: updated.type,
+        copies: updated.totalCopies,
+        available: updated.availableCopies,
+        rating: updated.rating,
+        readers: [],
+      },
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "No se pudo editar el libro.";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const session = await getSessionUser(request);
+    if (!session || session.role !== "admin") {
+      return Response.json(
+        { error: "Solo un administrador puede eliminar libros." },
+        { status: 403 },
+      );
+    }
+
+    const url = new URL(request.url);
+    const id = Number(url.searchParams.get("id"));
+    if (!Number.isInteger(id) || id < 1) {
+      return Response.json({ error: "Libro inválido." }, { status: 400 });
+    }
+
+    const db = getDb();
+    const [book] = await db
+      .select({
+        id: books.id,
+        fileKey: books.fileKey,
+      })
+      .from(books)
+      .where(eq(books.id, id))
+      .limit(1);
+
+    if (!book) {
+      return Response.json({ error: "Ese libro ya no existe." }, { status: 404 });
+    }
+
+    const activeLoans = await db
+      .select({ id: loans.id })
+      .from(loans)
+      .where(and(eq(loans.bookId, id), isNull(loans.returnedAt)))
+      .limit(1);
+
+    if (activeLoans.length > 0) {
+      return Response.json(
+        { error: "No puedes eliminar este libro mientras esté prestado." },
+        { status: 409 },
+      );
+    }
+
+    const questionRows = await db
+      .select({ id: questions.id })
+      .from(questions)
+      .where(eq(questions.bookId, id));
+    const questionIds = questionRows.map((row) => row.id);
+
+    if (questionIds.length > 0) {
+      await db.delete(answers).where(inArray(answers.questionId, questionIds));
+    }
+
+    await db.batch([
+      db.delete(questions).where(eq(questions.bookId, id)),
+      db.delete(posts).where(eq(posts.bookId, id)),
+      db.delete(loans).where(eq(loans.bookId, id)),
+      db.delete(books).where(eq(books.id, id)),
+    ]);
+
+    if (book.fileKey) {
+      await runtimeEnv().BOOK_FILES.delete(book.fileKey).catch(() => undefined);
+    }
+
+    return Response.json({ ok: true });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "No se pudo eliminar el libro.";
     return Response.json({ error: message }, { status: 500 });
   }
 }
