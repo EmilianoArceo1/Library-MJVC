@@ -67,7 +67,9 @@ export async function GET() {
     const rows = await db
       .select({
         id: posts.id,
+        userId: users.id,
         userName: users.name,
+        photoKey: users.photoKey,
         body: posts.body,
         createdAt: posts.createdAt,
       })
@@ -83,6 +85,10 @@ export async function GET() {
         return {
           id: -row.id,
           user: row.userName ?? "Lector",
+          photoUrl:
+            row.userId && row.photoKey
+              ? `/api/profile/photo?userId=${encodeURIComponent(row.userId)}&v=${encodeURIComponent(row.photoKey)}`
+              : null,
           book: stored.book,
           time: relativeTime(row.createdAt),
           text: stored.text,
@@ -156,6 +162,7 @@ export async function POST(request: Request) {
         post: {
           id: -created.id,
           user: identity.name,
+          photoUrl: identity.photoUrl,
           book,
           time: "Ahora",
           text,

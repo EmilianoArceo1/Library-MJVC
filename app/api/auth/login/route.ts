@@ -33,6 +33,9 @@ export async function POST(request: Request) {
         name: users.name,
         role: users.role,
         email: authCredentials.email,
+        description: users.description,
+        pagesRead: users.pagesRead,
+        photoKey: users.photoKey,
         passwordHash: authCredentials.passwordHash,
         passwordSalt: authCredentials.passwordSalt,
       })
@@ -56,6 +59,11 @@ export async function POST(request: Request) {
       name: row.name,
       email: row.email,
       role: row.role as "reader" | "admin",
+      description: row.description,
+      pagesRead: row.pagesRead,
+      photoUrl: row.photoKey
+        ? `/api/profile/photo?userId=${encodeURIComponent(row.id)}&v=${encodeURIComponent(row.photoKey)}`
+        : null,
     };
 
     const cookie = await createSession(request, user.id);

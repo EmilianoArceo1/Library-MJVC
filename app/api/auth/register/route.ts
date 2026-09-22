@@ -141,6 +141,9 @@ export async function POST(request: Request) {
         name,
         email,
         role: "admin",
+        description: "",
+        pagesRead: 0,
+        photoUrl: null,
       };
     } else {
       const userId = crypto.randomUUID();
@@ -164,6 +167,9 @@ export async function POST(request: Request) {
         name,
         email,
         role: "reader",
+        description: "",
+        pagesRead: 0,
+        photoUrl: null,
       };
     }
 
