@@ -11,7 +11,7 @@ export async function GET() {
 
     const [bookRows, userRows, activeLoanRows, pagesReadByUser, readCounts] =
       await Promise.all([
-        db.select().from(books).orderBy(books.title),
+        db.select().from(books).where(eq(books.publicationStatus, "published")).orderBy(books.title),
         db
           .select({
             id: users.id,
