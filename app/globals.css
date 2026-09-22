@@ -1588,3 +1588,118 @@
   }
   .reader-inline-return{transition-duration:1ms!important}
 }
+
+
+/* Front-cover hinge: animate the physical cover instead of swapping DOM states */
+.reader-cover-hinge{
+  position:absolute;
+  top:0;
+  bottom:0;
+  right:0;
+  width:calc(50% - 2px);
+  z-index:6;
+  transform-origin:left center;
+  transform-style:preserve-3d;
+  perspective:2200px;
+  will-change:transform;
+}
+.reader-cover-hinge .reader-cover{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  transform:none!important;
+  animation:none!important;
+  transform-origin:center center!important;
+}
+.reader-cover-shell.opening .reader-cover-hinge{
+  animation:readerHingeOpen 920ms cubic-bezier(.16,.74,.18,1) both;
+}
+.reader-cover-shell.closing .reader-cover-hinge{
+  animation:readerHingeClose 920ms cubic-bezier(.16,.74,.18,1) both;
+}
+@keyframes readerHingeOpen{
+  0%{transform:rotateY(0deg)}
+  16%{transform:rotateY(-12deg)}
+  38%{transform:rotateY(-58deg)}
+  58%{transform:rotateY(-104deg)}
+  78%{transform:rotateY(-150deg)}
+  100%{transform:rotateY(-180deg)}
+}
+@keyframes readerHingeClose{
+  0%{transform:rotateY(-180deg)}
+  18%{transform:rotateY(-164deg)}
+  42%{transform:rotateY(-118deg)}
+  64%{transform:rotateY(-70deg)}
+  84%{transform:rotateY(-24deg)}
+  100%{transform:rotateY(0deg)}
+}
+
+/* Keep the first spread physically present throughout the whole motion. */
+.reader-cover-shell.opening .reader-cover-underlay{
+  animation:readerOpenSpreadReveal 920ms cubic-bezier(.16,.74,.18,1) both!important;
+}
+.reader-cover-shell.closing .reader-cover-underlay{
+  opacity:1!important;
+  animation:readerOpenSpreadHide 920ms cubic-bezier(.16,.74,.18,1) both!important;
+}
+@keyframes readerOpenSpreadReveal{
+  0%,8%{opacity:0}
+  28%{opacity:.18}
+  52%{opacity:.6}
+  72%{opacity:.9}
+  100%{opacity:1}
+}
+@keyframes readerOpenSpreadHide{
+  0%{opacity:1}
+  48%{opacity:.82}
+  72%{opacity:.38}
+  92%,100%{opacity:0}
+}
+.reader-cover-shell.closing .reader-cover-pageblock{
+  opacity:0;
+  animation:readerPageBlockReturn 920ms cubic-bezier(.16,.74,.18,1) both!important;
+}
+@keyframes readerPageBlockReturn{
+  0%,40%{opacity:0}
+  70%{opacity:.28}
+  90%,100%{opacity:1}
+}
+
+/* The cover face keeps its own lighting while the hinge moves. */
+.reader-cover-shell.opening .reader-cover-front,
+.reader-cover-shell.closing .reader-cover-front{
+  animation:readerCoverLightFront 920ms ease-in-out both;
+}
+.reader-cover-shell.opening .reader-cover-back,
+.reader-cover-shell.closing .reader-cover-back{
+  animation:readerCoverLightBack 920ms ease-in-out both;
+}
+@keyframes readerCoverLightFront{
+  0%{filter:brightness(1)}
+  46%{filter:brightness(.86)}
+  74%{filter:brightness(.94)}
+  100%{filter:brightness(.98)}
+}
+@keyframes readerCoverLightBack{
+  0%{filter:brightness(.96)}
+  48%{filter:brightness(.84)}
+  78%{filter:brightness(.95)}
+  100%{filter:brightness(1)}
+}
+
+/* Disable superseded cover animations; the hinge owns all rotation now. */
+.reader-cover-shell.opening .reader-cover,
+.reader-cover-shell.closing .reader-cover{
+  animation:none!important;
+  transform:none!important;
+}
+@media(prefers-reduced-motion:reduce){
+  .reader-cover-shell.opening .reader-cover-hinge,
+  .reader-cover-shell.closing .reader-cover-hinge,
+  .reader-cover-shell.opening .reader-cover-underlay,
+  .reader-cover-shell.closing .reader-cover-underlay,
+  .reader-cover-shell.closing .reader-cover-pageblock{
+    animation-duration:1ms!important;
+  }
+}
