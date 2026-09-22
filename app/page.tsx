@@ -118,6 +118,16 @@ export default function Home(){
   const filtered=useMemo(()=>sortedBooks.filter(b=>(!search||`${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()))&&(!year||String(b.year)===year)&&(!type||b.type===type)),[search,year,type,sortedBooks]);
   const shelfSize=12,shelfCount=Math.max(1,Math.ceil(sortedBooks.length/shelfSize)),visibleBooks=sortedBooks.slice(shelfPage*shelfSize,(shelfPage+1)*shelfSize);
   const flash=(message:string)=>{setToast(message);setTimeout(()=>setToast(""),2600)};
+  const syncLocalPagesRead=(value:unknown)=>{
+    const pagesRead=Number(value);
+    if(!Number.isFinite(pagesRead)||pagesRead<0)return;
+    const userId=currentUser?.id;
+    setCurrentUser(user=>user?{...user,pagesRead}:user);
+    if(!userId)return;
+    setPeople(current=>current
+      .map(person=>person.id===userId?{...person,pages:pagesRead}:person)
+      .sort((left,right)=>right.pages-left.pages||left.name.localeCompare(right.name,"es",{sensitivity:"base"})));
+  };
   const loggedIn=Boolean(currentUser),currentName=currentUser?.name||"Lector";
   useEffect(()=>{
     let cancelled=false;
@@ -195,6 +205,7 @@ export default function Home(){
         const loadedPeople:Reader[]=Array.isArray(payload.people)?payload.people.map((person:any,index:number)=>({...person,color:palette[index%palette.length]})):[];
         setBooks(loadedBooks);
         setPeople(loadedPeople);
+        setCurrentUser(user=>{if(!user)return user;const person=loadedPeople.find(reader=>reader.id===user.id);return person?{...user,pagesRead:person.pages}:user});
         setSelected(current=>current&&loadedBooks.some(book=>book.id===current.id)?current:(loadedBooks[0]||null));
         setPostBook(current=>current&&loadedBooks.some(book=>book.title===current)?current:(loadedBooks[0]?.title||""));
       })
@@ -434,7 +445,7 @@ export default function Home(){
     const progress=lastVisible===0?0:Math.round((lastVisible/readerTotalPages)*100);
     setOwned(current=>current?{...current,progress}:current);
     const timer=setTimeout(()=>{
-      fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress})}).catch(error=>console.error("No se pudo guardar el progreso",error));
+      fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress})}).then(async response=>{const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar el progreso");syncLocalPagesRead(payload.pagesRead)}).catch(error=>console.error("No se pudo guardar el progreso",error));
     },450);
     return ()=>clearTimeout(timer);
   },[view,readerMode,loanId,readerPage,readerTotalPages]);
@@ -512,7 +523,7 @@ export default function Home(){
     if(continuousProgressTimerRef.current!==null)window.clearTimeout(continuousProgressTimerRef.current);
     continuousProgressTimerRef.current=window.setTimeout(()=>{
       if(!loanId)return;
-      fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress:safeProgress})}).catch(error=>console.error("No se pudo guardar el progreso continuo",error));
+      fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress:safeProgress})}).then(async response=>{const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar el progreso continuo");syncLocalPagesRead(payload.pagesRead)}).catch(error=>console.error("No se pudo guardar el progreso continuo",error));
       continuousProgressTimerRef.current=null;
     },500);
   };
@@ -637,7 +648,7 @@ export default function Home(){
       if(!response.ok)throw new Error(payload.error||"No se pudo devolver el libro");
       setBooks(current=>current.map(book=>book.id===owned.id?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||book.reads}:book));
       setSelected(current=>current?.id===owned.id?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||current.reads}:current);
-      setCurrentUser(user=>user?{...user,pagesRead:user.pagesRead+owned.pages}:user);
+      syncLocalPagesRead(payload.pagesRead);
       setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);setReaderClosing(false);setReaderReturnVisible(false);setReaderAnimating(false);setReaderPendingPage(null);
       flash("Libro devuelto. Tu calificación y aportaciones quedaron guardadas.");
     }catch(error){

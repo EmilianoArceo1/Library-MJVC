@@ -1,7 +1,8 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { answers, books, loans, questions, users } from "../../../db/schema";
+import { answers, books, loans, questions } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
+import { countUniqueCompletedReads, recordReadingProgress, syncUserPagesRead } from "../../reading-stats";
 
 function bookDto(row: {
   id: number;
@@ -133,6 +134,7 @@ export async function POST(request: Request) {
     ]);
 
     const loanId = results[0][0]?.id;
+    if (typeof loanId === "number") await recordReadingProgress(loanId, 0);
     return Response.json(
       {
         loan: {
@@ -303,10 +305,12 @@ export async function PATCH(request: Request) {
           .update(books)
           .set({ availableCopies: sql`${books.availableCopies} + 1` })
           .where(eq(books.id, active.bookId)),
-        db
-          .update(users)
-          .set({ pagesRead: sql`${users.pagesRead} + ${active.pages}` })
-          .where(eq(users.id, session.id)),
+      ]);
+
+      await recordReadingProgress(loanId, 100);
+      const [pagesRead, uniqueReads] = await Promise.all([
+        syncUserPagesRead(session.id),
+        countUniqueCompletedReads(active.bookId),
       ]);
 
       const loanRows = await db
@@ -333,7 +337,8 @@ export async function PATCH(request: Request) {
       return Response.json({
         ok: true,
         rating: averageRating,
-        reads: loanRows.length,
+        reads: uniqueReads,
+        pagesRead,
       });
     }
 
@@ -347,7 +352,10 @@ export async function PATCH(request: Request) {
       .set({ progress })
       .where(eq(loans.id, loanId));
 
-    return Response.json({ ok: true, progress });
+    await recordReadingProgress(loanId, progress);
+    const pagesRead = await syncUserPagesRead(session.id);
+
+    return Response.json({ ok: true, progress, pagesRead });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "No se pudo actualizar la lectura.";
