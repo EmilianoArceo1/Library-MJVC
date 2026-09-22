@@ -385,7 +385,7 @@ export default function Home(){
     if(readerTurnTimerRef.current!==null)window.clearTimeout(readerTurnTimerRef.current);
     const isCoverTransition=(readerPage===0&&target===1)||(readerPage===1&&target===0);
     const isFinalTransition=readerPage===lastSpreadStart&&target===backCoverPage;
-    const transitionMs=isCoverTransition?920:isFinalTransition?940:720;
+    const transitionMs=isCoverTransition?980:isFinalTransition?1000:720;
     readerTurnTimerRef.current=window.setTimeout(()=>{
       setReaderPage(target);
       setReaderPendingPage(null);
