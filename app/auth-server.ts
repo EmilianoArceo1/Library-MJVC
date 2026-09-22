@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { authCredentials, authSessions, users } from "../db/schema";
 
@@ -221,9 +221,3 @@ export async function getSessionUser(
   };
 }
 
-export async function deleteExpiredSessions(): Promise<void> {
-  const db = getDb();
-  await db
-    .delete(authSessions)
-    .where(and(eq(authSessions.id, authSessions.id)));
-}
