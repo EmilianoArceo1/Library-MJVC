@@ -220,6 +220,7 @@ export default function Home(){
   },[view,owned?.id]);
   useEffect(()=>{
     let cancelled=false;
+    let renderTask:any=null;
     if(readerKind!=="pdf"||!pdfDocRef.current||!readerCanvasRef.current)return ()=>{cancelled=true};
     const render=async()=>{
       try{
@@ -231,13 +232,14 @@ export default function Home(){
         if(!context)return;
         canvas.width=Math.floor(viewport.width);
         canvas.height=Math.floor(viewport.height);
-        await page.render({canvasContext:context,viewport}).promise;
+        renderTask=page.render({canvasContext:context,viewport});
+        await renderTask.promise;
       }catch(error){
-        if(!cancelled)setReaderError(error instanceof Error?error.message:"No se pudo mostrar esta página.");
+        if(!cancelled&&!(error instanceof Error&&error.name==="RenderingCancelledException"))setReaderError(error instanceof Error?error.message:"No se pudo mostrar esta página.");
       }
     };
     render();
-    return ()=>{cancelled=true};
+    return ()=>{cancelled=true;try{renderTask?.cancel()}catch{}};
   },[readerKind,readerPage,readerTotalPages,readerLoading,readerZoom]);
   useEffect(()=>{
     if(view!=="lector"||!loanId||readerTotalPages<1)return;
