@@ -9,6 +9,7 @@ import {
   normalizeEmail,
   type SessionUser,
 } from "../../../auth-server";
+import { createNotification, ensureWorkflowSchema } from "../../../workflow-server";
 
 const ADMIN_USER_ID = "emiliano-admin";
 
@@ -23,6 +24,7 @@ function safeEqual(left: string, right: string): boolean {
 
 export async function POST(request: Request) {
   try {
+    await ensureWorkflowSchema();
     const payload = (await request.json()) as {
       name?: string;
       email?: string;
@@ -141,6 +143,7 @@ export async function POST(request: Request) {
         name,
         email,
         role: "admin",
+        approvalStatus: "approved",
         description: "",
         pagesRead: 0,
         photoUrl: null,
@@ -148,11 +151,13 @@ export async function POST(request: Request) {
     } else {
       const userId = crypto.randomUUID();
 
+      const now = Date.now();
       await db.batch([
         db.insert(users).values({
           id: userId,
           name,
           role: "reader",
+          approvalStatus: "pending",
         }),
         db.insert(authCredentials).values({
           userId,
@@ -161,12 +166,27 @@ export async function POST(request: Request) {
           passwordSalt: passwordRecord.passwordSalt,
         }),
       ]);
+      await env.DB.prepare(
+        `INSERT INTO account_requests
+          (user_id, requester_name, requester_email, status, requested_at, updated_at)
+         VALUES (?, ?, ?, 'pending', ?, ?)`,
+      )
+        .bind(userId, name, email, now, now)
+        .run();
+      await createNotification({
+        userId,
+        title: "Solicitud de registro enviada",
+        body:
+          "Tu cuenta quedó pendiente de revisión. Un administrador o asesor te notificará aquí cuando tome una decisión.",
+        kind: "registration",
+      });
 
       user = {
         id: userId,
         name,
         email,
         role: "reader",
+        approvalStatus: "pending",
         description: "",
         pagesRead: 0,
         photoUrl: null,
@@ -175,7 +195,14 @@ export async function POST(request: Request) {
 
     const cookie = await createSession(request, user.id);
     return Response.json(
-      { user },
+      {
+        user,
+        pending: user.approvalStatus === "pending",
+        message:
+          user.approvalStatus === "pending"
+            ? "Tu solicitud fue enviada al administrador para revisión."
+            : "Cuenta configurada correctamente.",
+      },
       {
         status: 201,
         headers: { "Set-Cookie": cookie },
