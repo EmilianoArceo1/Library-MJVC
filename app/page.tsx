@@ -486,6 +486,7 @@ export default function Home(){
   useEffect(()=>{
     if(view!=="lector"||readerPage!==backCoverPage||readerAnimating||readerFinishShownRef.current)return;
     readerFinishShownRef.current=true;
+    setReaderZoom(1);
     setReaderClosing(false);
     setReaderReturnVisible(false);
     if(readerFinishTimerRef.current!==null)window.clearTimeout(readerFinishTimerRef.current);
