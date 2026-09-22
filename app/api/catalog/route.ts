@@ -1,41 +1,50 @@
-import { desc, eq, isNull } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { books, loans, users } from "../../../db/schema";
+import { computeAllUserPagesRead, computeUniqueCompletedReadCounts, persistUserPagesRead } from "../../reading-stats";
 
 export async function GET() {
   try {
     const db = getDb();
 
-    const [bookRows, userRows, activeLoanRows, loanRows] = await Promise.all([
-      db.select().from(books).orderBy(books.title),
-      db
-        .select({
-          id: users.id,
-          name: users.name,
-          pagesRead: users.pagesRead,
-          role: users.role,
-          photoKey: users.photoKey,
-        })
-        .from(users)
-        .orderBy(desc(users.pagesRead), users.name),
-      db
-        .select({
-          userId: loans.userId,
-          title: books.title,
-        })
-        .from(loans)
-        .innerJoin(books, eq(loans.bookId, books.id))
-        .where(isNull(loans.returnedAt)),
-      db.select({ bookId: loans.bookId }).from(loans),
-    ]);
+    const [bookRows, userRows, activeLoanRows, pagesReadByUser, readCounts] =
+      await Promise.all([
+        db.select().from(books).orderBy(books.title),
+        db
+          .select({
+            id: users.id,
+            name: users.name,
+            pagesRead: users.pagesRead,
+            role: users.role,
+            photoKey: users.photoKey,
+          })
+          .from(users)
+          .orderBy(users.name),
+        db
+          .select({
+            userId: loans.userId,
+            title: books.title,
+          })
+          .from(loans)
+          .innerJoin(books, eq(loans.bookId, books.id))
+          .where(isNull(loans.returnedAt)),
+        computeAllUserPagesRead(),
+        computeUniqueCompletedReadCounts(),
+      ]);
 
     const currentReading = new Map(
       activeLoanRows.map((row) => [row.userId, row.title]),
     );
-    const readCounts = new Map<number, number>();
-    for (const loan of loanRows) {
-      readCounts.set(loan.bookId, (readCounts.get(loan.bookId) ?? 0) + 1);
-    }
+
+    await Promise.all(
+      userRows
+        .filter(
+          (user) => user.pagesRead !== (pagesReadByUser.get(user.id) ?? 0),
+        )
+        .map((user) =>
+          persistUserPagesRead(user.id, pagesReadByUser.get(user.id) ?? 0),
+        ),
+    );
 
     return Response.json({
       books: bookRows.map((book) => ({
@@ -52,16 +61,22 @@ export async function GET() {
         reads: readCounts.get(book.id) ?? 0,
         readers: [],
       })),
-      people: userRows.map((user) => ({
-        id: user.id,
-        name: user.name,
-        pages: user.pagesRead,
-        role: user.role,
-        now: currentReading.get(user.id) ?? null,
-        photoUrl: user.photoKey
-          ? `/api/profile/photo?userId=${encodeURIComponent(user.id)}&v=${encodeURIComponent(user.photoKey)}`
-          : null,
-      })),
+      people: userRows
+        .map((user) => ({
+          id: user.id,
+          name: user.name,
+          pages: pagesReadByUser.get(user.id) ?? 0,
+          role: user.role,
+          now: currentReading.get(user.id) ?? null,
+          photoUrl: user.photoKey
+            ? `/api/profile/photo?userId=${encodeURIComponent(user.id)}&v=${encodeURIComponent(user.photoKey)}`
+            : null,
+        }))
+        .sort(
+          (left, right) =>
+            right.pages - left.pages ||
+            left.name.localeCompare(right.name, "es", { sensitivity: "base" }),
+        ),
     });
   } catch (error) {
     const message =
