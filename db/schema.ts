@@ -48,6 +48,7 @@ export const books = sqliteTable("books", {
   fileKey: text("file_key"),
   coverKey: text("cover_key"),
   rating: real("rating").notNull().default(0),
+  publicationStatus: text("publication_status", { enum: ["published", "hidden"] }).notNull().default("published"),
 });
 
 export const loans = sqliteTable("loans", {
