@@ -128,7 +128,7 @@ export async function POST(request: Request) {
       await db.batch([
         db
           .update(users)
-          .set({ name, role: "admin" })
+          .set({ name, role: "admin", approvalStatus: "approved" })
           .where(eq(users.id, ADMIN_USER_ID)),
         db.insert(authCredentials).values({
           userId: ADMIN_USER_ID,
