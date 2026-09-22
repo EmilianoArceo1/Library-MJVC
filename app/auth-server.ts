@@ -12,6 +12,9 @@ export type SessionUser = {
   name: string;
   email: string;
   role: "reader" | "admin";
+  description: string;
+  pagesRead: number;
+  photoUrl: string | null;
 };
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -199,6 +202,9 @@ export async function getSessionUser(
       name: users.name,
       role: users.role,
       email: authCredentials.email,
+      description: users.description,
+      pagesRead: users.pagesRead,
+      photoKey: users.photoKey,
     })
     .from(authSessions)
     .innerJoin(users, eq(authSessions.userId, users.id))
@@ -218,6 +224,11 @@ export async function getSessionUser(
     name: row.name,
     email: row.email,
     role: row.role as "reader" | "admin",
+    description: row.description,
+    pagesRead: row.pagesRead,
+    photoUrl: row.photoKey
+      ? `/api/profile/photo?userId=${encodeURIComponent(row.id)}&v=${encodeURIComponent(row.photoKey)}`
+      : null,
   };
 }
 
