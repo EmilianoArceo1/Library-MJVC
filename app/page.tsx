@@ -1,14 +1,16 @@
 "use client";
 
 import { type FormEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import ManagementPanel from "./components/ManagementPanel";
+import NotificationsPanel from "./components/NotificationsPanel";
 
-type View = "biblioteca" | "comunidad" | "foro" | "subir" | "lector";
+type View = "biblioteca" | "comunidad" | "foro" | "subir" | "lector" | "gestion" | "notificaciones";
 type ReaderMode = "book" | "continuous";
 type Theme = "light" | "dark";
 type Book = { id:number; title:string; author:string; year:number; pages:number; type:string; color:string; cover:string; synopsis:string; rating:number; available:number; copies:number; reads:number; readers:string[]; progress?:number };
-type Reader = { id:string; name:string; pages:number; role:"reader"|"admin"; now:string|null; color:string; photoUrl:string|null };
+type Reader = { id:string; name:string; pages:number; role:"reader"|"advisor"|"admin"; now:string|null; color:string; photoUrl:string|null };
 type ForumPost = { id:number; user:string; book:string; time:string; text:string; likes:number; replies:number; color:string; photoUrl?:string|null };
-type SessionUser = { id:string; name:string; email:string; role:"reader"|"admin"; description:string; pagesRead:number; photoUrl:string|null };
+type SessionUser = { id:string; name:string; email:string; role:"reader"|"advisor"|"admin"; approvalStatus:"pending"|"approved"|"rejected"; description:string; pagesRead:number; photoUrl:string|null };
 type ReaderQuestion = { id:number; body:string; user:string };
 type ReconstructedPage = { heading:string|null; paragraphs:string[]; artwork?:string|null };
 type ReconstructedBook = { version:1; source:"pdf"|"txt"; pages:ReconstructedPage[] };
@@ -109,7 +111,7 @@ export default function Home(){
   const readBooks=books;
   const [owned,setOwned]=useState<Book|null>(null),[toast,setToast]=useState(""),[modal,setModal]=useState<"detail"|"return"|"profile"|null>(null),[posts,setPosts]=useState<ForumPost[]>(initialPosts),[draft,setDraft]=useState(""),[publishing,setPublishing]=useState(false),[postBook,setPostBook]=useState(""),[liked,setLiked]=useState<number[]>([]),[reactionCounts,setReactionCounts]=useState<Record<string,number>>({}),[reactionBusy,setReactionBusy]=useState<string[]>([]);
   const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookPackage,setBookPackage]=useState(""),[bookUploading,setBookUploading]=useState(false);
-  const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false),[theme,setTheme]=useState<Theme>("light"),[themeSaving,setThemeSaving]=useState(false);
+  const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false),[theme,setTheme]=useState<Theme>("light"),[themeSaving,setThemeSaving]=useState(false),[notificationUnread,setNotificationUnread]=useState(0),[catalogNonce,setCatalogNonce]=useState(0);
   const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerMode,setReaderMode]=useState<ReaderMode>("book"),[continuousFontSize,setContinuousFontSize]=useState(27),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next"),[readerPendingPage,setReaderPendingPage]=useState<number|null>(null),[readerAnimating,setReaderAnimating]=useState(false),[readerClosing,setReaderClosing]=useState(false),[readerReturnVisible,setReaderReturnVisible]=useState(false);
   const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false),[returnQuestions,setReturnQuestions]=useState<ReaderQuestion[]>([]),[returnQuestionsLoading,setReturnQuestionsLoading]=useState(false),[returnExtraQuestions,setReturnExtraQuestions]=useState(0);
   const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null),readerFinishTimerRef=useRef<number|null>(null),readerFinishShownRef=useRef(false),readerContinuousRef=useRef<HTMLDivElement|null>(null),continuousProgressTimerRef=useRef<number|null>(null);
@@ -128,7 +130,7 @@ export default function Home(){
       .map(person=>person.id===userId?{...person,pages:pagesRead}:person)
       .sort((left,right)=>right.pages-left.pages||left.name.localeCompare(right.name,"es",{sensitivity:"base"})));
   };
-  const loggedIn=Boolean(currentUser),currentName=currentUser?.name||"Lector";
+  const loggedIn=Boolean(currentUser),currentName=currentUser?.name||"Lector",isApproved=currentUser?.approvalStatus==="approved",isModerator=currentUser?.role==="admin"||currentUser?.role==="advisor";
   useEffect(()=>{
     let cancelled=false;
     fetch("/api/auth/me")
@@ -142,6 +144,28 @@ export default function Home(){
       .finally(()=>{if(!cancelled)setAuthLoading(false)});
     return ()=>{cancelled=true};
   },[]);
+  useEffect(()=>{
+    if(!currentUser){setNotificationUnread(0);return}
+    let cancelled=false;
+    const refresh=async()=>{
+      try{
+        const [notificationResponse,sessionResponse]=await Promise.all([
+          fetch("/api/notifications",{cache:"no-store"}),
+          fetch("/api/auth/me",{cache:"no-store"}),
+        ]);
+        const notificationPayload=await notificationResponse.json();
+        const sessionPayload=await sessionResponse.json();
+        if(cancelled)return;
+        if(notificationResponse.ok)setNotificationUnread(Number(notificationPayload.unread)||0);
+        if(sessionResponse.ok&&sessionPayload.user)setCurrentUser(sessionPayload.user);
+      }catch(error){
+        console.error("No se pudieron actualizar las notificaciones",error);
+      }
+    };
+    refresh();
+    const timer=window.setInterval(refresh,20000);
+    return ()=>{cancelled=true;window.clearInterval(timer)};
+  },[currentUser?.id]);
   useEffect(()=>{
     const root=document.documentElement;
     root.dataset.theme=theme;
@@ -211,7 +235,7 @@ export default function Home(){
       })
       .catch(error=>console.error("No se pudo cargar el catálogo real",error));
     return ()=>{cancelled=true};
-  },[]);
+  },[catalogNonce]);
   useEffect(()=>{
     let cancelled=false;
     if(!currentUser){
