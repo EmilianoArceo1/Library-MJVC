@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { books, loans, users } from "../../../db/schema";
+import { answers, books, loans, questions, users } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
 
 function bookDto(row: {
@@ -166,6 +166,8 @@ export async function PATCH(request: Request) {
       action?: "progress" | "return";
       progress?: number;
       rating?: number;
+      question?: string;
+      answers?: Array<{ questionId?: number; body?: string }>;
     };
 
     const loanId = Number(payload.loanId);
@@ -198,8 +200,95 @@ export async function PATCH(request: Request) {
 
     if (payload.action === "return") {
       const rating = Number(payload.rating);
-      const safeRating =
-        Number.isInteger(rating) && rating >= 1 && rating <= 5 ? rating : null;
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        return Response.json(
+          { error: "Selecciona una calificación de 1 a 5 estrellas." },
+          { status: 400 },
+        );
+      }
+
+      const proposedQuestion = (payload.question ?? "").trim();
+      if (proposedQuestion.length > 500) {
+        return Response.json(
+          { error: "La pregunta propuesta no puede superar 500 caracteres." },
+          { status: 400 },
+        );
+      }
+
+      const [questionRows, answeredRows] = await Promise.all([
+        db
+          .select({
+            id: questions.id,
+            userId: questions.userId,
+          })
+          .from(questions)
+          .where(eq(questions.bookId, active.bookId))
+          .orderBy(questions.createdAt),
+        db
+          .select({ questionId: answers.questionId })
+          .from(answers)
+          .where(eq(answers.userId, session.id)),
+      ]);
+
+      const alreadyAnswered = new Set(
+        answeredRows.map((row) => row.questionId),
+      );
+      const requiredQuestionIds = questionRows
+        .filter(
+          (row) =>
+            row.userId !== session.id && !alreadyAnswered.has(row.id),
+        )
+        .slice(0, 3)
+        .map((row) => row.id);
+
+      const submittedAnswers = Array.isArray(payload.answers)
+        ? payload.answers
+        : [];
+      const answerMap = new Map<number, string>();
+      for (const answer of submittedAnswers) {
+        const questionId = Number(answer.questionId);
+        const body = (answer.body ?? "").trim();
+        if (
+          Number.isInteger(questionId) &&
+          questionId > 0 &&
+          body.length > 0 &&
+          body.length <= 2000
+        ) {
+          answerMap.set(questionId, body);
+        }
+      }
+
+      const missingRequired = requiredQuestionIds.some(
+        (questionId) => !answerMap.get(questionId),
+      );
+      if (missingRequired) {
+        return Response.json(
+          {
+            error:
+              "Responde las preguntas mostradas. Nunca te pediremos más de 3 por devolución.",
+          },
+          { status: 400 },
+        );
+      }
+
+      for (const questionId of requiredQuestionIds) {
+        const body = answerMap.get(questionId);
+        if (!body) continue;
+        await db.insert(answers).values({
+          questionId,
+          userId: session.id,
+          body,
+        });
+      }
+
+      if (proposedQuestion) {
+        await db.insert(questions).values({
+          bookId: active.bookId,
+          userId: session.id,
+          body: proposedQuestion,
+          createdAt: new Date(),
+        });
+      }
 
       await db.batch([
         db
@@ -207,7 +296,7 @@ export async function PATCH(request: Request) {
           .set({
             returnedAt: new Date(),
             progress: 100,
-            rating: safeRating,
+            rating,
           })
           .where(eq(loans.id, loanId)),
         db
@@ -220,7 +309,32 @@ export async function PATCH(request: Request) {
           .where(eq(users.id, session.id)),
       ]);
 
-      return Response.json({ ok: true });
+      const loanRows = await db
+        .select({ rating: loans.rating })
+        .from(loans)
+        .where(eq(loans.bookId, active.bookId));
+      const ratings = loanRows
+        .map((row) => row.rating)
+        .filter((value): value is number => typeof value === "number");
+      const averageRating =
+        ratings.length > 0
+          ? Math.round(
+              (ratings.reduce((total, value) => total + value, 0) /
+                ratings.length) *
+                100,
+            ) / 100
+          : 0;
+
+      await db
+        .update(books)
+        .set({ rating: averageRating })
+        .where(eq(books.id, active.bookId));
+
+      return Response.json({
+        ok: true,
+        rating: averageRating,
+        reads: loanRows.length,
+      });
     }
 
     const progress = Number(payload.progress);

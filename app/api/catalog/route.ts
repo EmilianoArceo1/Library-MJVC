@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const db = getDb();
 
-    const [bookRows, userRows, activeLoanRows] = await Promise.all([
+    const [bookRows, userRows, activeLoanRows, loanRows] = await Promise.all([
       db.select().from(books).orderBy(books.title),
       db
         .select({
@@ -26,11 +26,16 @@ export async function GET() {
         .from(loans)
         .innerJoin(books, eq(loans.bookId, books.id))
         .where(isNull(loans.returnedAt)),
+      db.select({ bookId: loans.bookId }).from(loans),
     ]);
 
     const currentReading = new Map(
       activeLoanRows.map((row) => [row.userId, row.title]),
     );
+    const readCounts = new Map<number, number>();
+    for (const loan of loanRows) {
+      readCounts.set(loan.bookId, (readCounts.get(loan.bookId) ?? 0) + 1);
+    }
 
     return Response.json({
       books: bookRows.map((book) => ({
@@ -44,6 +49,7 @@ export async function GET() {
         rating: book.rating,
         available: book.availableCopies,
         copies: book.totalCopies,
+        reads: readCounts.get(book.id) ?? 0,
         readers: [],
       })),
       people: userRows.map((user) => ({
