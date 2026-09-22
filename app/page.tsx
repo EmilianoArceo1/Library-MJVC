@@ -10,7 +10,7 @@ type SessionUser = { id:string; name:string; email:string; role:"reader"|"admin"
 type ReaderQuestion = { id:number; body:string; user:string };
 type ReconstructedPage = { heading:string|null; paragraphs:string[]; artwork?:string|null };
 type ReconstructedBook = { version:1; source:"pdf"|"txt"; pages:ReconstructedPage[] };
-const pageFitCache=new WeakMap<ReconstructedPage,number>();
+const pageFitCache=new WeakMap<ReconstructedPage,Map<string,number>>();
 
 const initialPosts: ForumPost[] = [];
 
@@ -21,24 +21,36 @@ function Avatar({name,color,small=false,src=null}:{name:string;color:string;smal
 function Stars({rating,onSelect}:{rating:number;onSelect?:(rating:number)=>void}){return <span className={`stars ${onSelect?"interactive":""}`} aria-label={`${rating} de 5`}>{[1,2,3,4,5].map(n=>onSelect?<button type="button" key={n} className={n<=rating?"on":""} onClick={()=>onSelect(n)} aria-label={`${n} estrellas`}>★</button>:<span key={n} className={n<=Math.round(rating)?"on":""}>★</span>)}</span>}
 function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumber?:number;side:"left"|"right";zoom:number}){
   const contentRef=useRef<HTMLDivElement|null>(null);
-  const [fitScale,setFitScale]=useState(()=>page?pageFitCache.get(page)??1:1);
+  const [fitScale,setFitScale]=useState(1);
   useLayoutEffect(()=>{
     if(!page)return;
-    const cached=pageFitCache.get(page);
-    if(cached){
-      setFitScale(cached);
-      return;
-    }
     const node=contentRef.current;
     if(!node)return;
-    let scale=1;
-    node.style.fontSize="1em";
-    while(scale>.5&&(node.scrollHeight>node.clientHeight+2||node.scrollWidth>node.clientWidth+2)){
-      scale=Math.max(.5,Math.round((scale-.03)*100)/100);
-      node.style.fontSize=`${scale}em`;
-    }
-    pageFitCache.set(page,scale);
-    setFitScale(scale);
+    const fit=()=>{
+      const width=Math.max(1,Math.round(node.clientWidth));
+      const height=Math.max(1,Math.round(node.clientHeight));
+      const cacheKey=`${width}x${height}`;
+      const cached=pageFitCache.get(page)?.get(cacheKey);
+      if(cached){
+        node.style.fontSize=`${cached}em`;
+        setFitScale(cached);
+        return;
+      }
+      let scale=1;
+      node.style.fontSize="1em";
+      while(scale>.34&&(node.scrollHeight>node.clientHeight-2||node.scrollWidth>node.clientWidth-2)){
+        scale=Math.max(.34,Math.round((scale-.025)*1000)/1000);
+        node.style.fontSize=`${scale}em`;
+      }
+      let sizes=pageFitCache.get(page);
+      if(!sizes){sizes=new Map<string,number>();pageFitCache.set(page,sizes)}
+      sizes.set(cacheKey,scale);
+      setFitScale(scale);
+    };
+    fit();
+    const observer=new ResizeObserver(fit);
+    observer.observe(node);
+    return ()=>observer.disconnect();
   },[page]);
   return <article className={`reader-sheet ${side} ${!page?"blank":""} ${page?.heading?"has-heading":""}`} style={{fontSize:`${zoom}em`}}>{page?<><div ref={contentRef} className="reader-sheet-inner" style={{fontSize:`${fitScale}em`}}>{page.artwork&&<img className="reader-artwork" style={{maxHeight:`${210*fitScale}px`}} src={page.artwork} alt="Ilustración recuperada del documento original"/>}{page.heading&&<h3>{page.heading}</h3>}{page.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div><span className="reader-page-number">{pageNumber}</span></>:<div className="reader-sheet-inner reader-blank-page"/>}</article>
 }
@@ -58,15 +70,24 @@ function AnimatedReaderSpread({pages,currentStart,targetStart,direction}:{pages:
   return <div className={`reader-spread reader-spread-turning ${direction}`}><BookSheet page={baseLeft} pageNumber={baseLeftNumber} side="left" zoom={1}/><div className="reader-gutter"/><BookSheet page={baseRight} pageNumber={baseRightNumber<=pages.length?baseRightNumber:undefined} side="right" zoom={1}/><div className={`reader-turn-leaf ${direction}`} aria-hidden="true"><div className="reader-turn-face front"><BookSheet page={frontPage} pageNumber={frontNumber} side={forward?"right":"left"} zoom={1}/></div><div className="reader-turn-face back"><BookSheet page={backPage} pageNumber={backNumber<=pages.length?backNumber:undefined} side={forward?"left":"right"} zoom={1}/></div></div></div>
 }
 
+function ReaderInsideBackCover({side="right"}:{side?:"left"|"right"}){
+  return <article className={`reader-sheet reader-inside-cover ${side}`}><div className="reader-sheet-inner"><div className="reader-inside-cover-mark">Biblioteca virtual MJVC Mérida</div></div></article>
+}
+function ReaderEndTurn({pages,start}:{pages:ReconstructedPage[];start:number}){
+  const frontPage=pages[start];
+  const frontNumber=start+1<=pages.length?start+1:undefined;
+  return <div className="reader-spread reader-spread-turning next reader-ending-spread"><BookSheet page={pages[start-1]} pageNumber={start} side="left" zoom={1}/><div className="reader-gutter"/><ReaderInsideBackCover/><div className="reader-turn-leaf next" aria-hidden="true"><div className="reader-turn-face front"><BookSheet page={frontPage} pageNumber={frontNumber} side="right" zoom={1}/></div><div className="reader-turn-face back"><ReaderInsideBackCover side="left"/></div></div></div>
+}
+
 export default function Home(){
   const [view,setView]=useState<View>("biblioteca"),[books,setBooks]=useState<Book[]>([]),[people,setPeople]=useState<Reader[]>([]),[selected,setSelected]=useState<Book|null>(null),[search,setSearch]=useState(""),[year,setYear]=useState(""),[type,setType]=useState("");
   const readBooks=books;
   const [owned,setOwned]=useState<Book|null>(null),[toast,setToast]=useState(""),[modal,setModal]=useState<"detail"|"return"|"profile"|null>(null),[posts,setPosts]=useState<ForumPost[]>(initialPosts),[draft,setDraft]=useState(""),[publishing,setPublishing]=useState(false),[postBook,setPostBook]=useState(""),[liked,setLiked]=useState<number[]>([]),[reactionCounts,setReactionCounts]=useState<Record<string,number>>({}),[reactionBusy,setReactionBusy]=useState<string[]>([]);
   const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookPackage,setBookPackage]=useState(""),[bookUploading,setBookUploading]=useState(false);
   const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false);
-  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next"),[readerPendingPage,setReaderPendingPage]=useState<number|null>(null),[readerAnimating,setReaderAnimating]=useState(false);
+  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next"),[readerPendingPage,setReaderPendingPage]=useState<number|null>(null),[readerAnimating,setReaderAnimating]=useState(false),[readerClosing,setReaderClosing]=useState(false);
   const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false),[returnQuestions,setReturnQuestions]=useState<ReaderQuestion[]>([]),[returnQuestionsLoading,setReturnQuestionsLoading]=useState(false),[returnExtraQuestions,setReturnExtraQuestions]=useState(0);
-  const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null);
+  const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null),readerFinishTimerRef=useRef<number|null>(null),readerFinishShownRef=useRef(false);
   const [shelfPage,setShelfPage]=useState(0);
   const sortedBooks=useMemo(()=>[...books].sort((a,b)=>a.title.localeCompare(b.title,"es",{sensitivity:"base"})),[books]);
   const filtered=useMemo(()=>sortedBooks.filter(b=>(!search||`${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()))&&(!year||String(b.year)===year)&&(!type||b.type===type)),[search,year,type,sortedBooks]);
@@ -308,6 +329,10 @@ export default function Home(){
     setReaderError("");
     setReaderPages([]);
     setReaderZoom(1);
+    setReaderClosing(false);
+    setReaderPendingPage(null);
+    setReaderAnimating(false);
+    readerFinishShownRef.current=false;
     fetch(`/api/books/file?id=${owned.id}`)
       .then(async response=>{
         if(!response.ok)throw new Error(await response.text()||"No se pudo abrir el libro");
@@ -341,15 +366,19 @@ export default function Home(){
     return ()=>clearTimeout(timer);
   },[view,loanId,readerPage,readerTotalPages]);
   const lastSpreadStart=readerTotalPages<1?0:(readerTotalPages%2===0?Math.max(1,readerTotalPages-1):readerTotalPages);
+  const backCoverPage=readerTotalPages+1;
   const startReaderTurn=(direction:"next"|"prev")=>{
-    if(readerAnimating||readerTotalPages<1)return;
+    if(readerAnimating||readerClosing||readerTotalPages<1)return;
     const target=direction==="next"
-      ?(readerPage===0?1:Math.min(lastSpreadStart,readerPage+2))
-      :(readerPage<=1?0:Math.max(1,readerPage-2));
+      ?(readerPage===0?1:readerPage===lastSpreadStart?backCoverPage:readerPage===backCoverPage?backCoverPage:Math.min(lastSpreadStart,readerPage+2))
+      :(readerPage===backCoverPage?lastSpreadStart:readerPage<=1?0:Math.max(1,readerPage-2));
     if(target===readerPage)return;
+    if(readerPage===backCoverPage&&direction==="prev")readerFinishShownRef.current=false;
+    if(target===backCoverPage)readerFinishShownRef.current=false;
     setReaderTurn(direction);
     setReaderPendingPage(target);
     setReaderAnimating(true);
+    setReaderClosing(false);
     if(readerTurnTimerRef.current!==null)window.clearTimeout(readerTurnTimerRef.current);
     readerTurnTimerRef.current=window.setTimeout(()=>{
       setReaderPage(target);
@@ -360,14 +389,17 @@ export default function Home(){
   };
   const previousReaderSpread=()=>startReaderTurn("prev");
   const nextReaderSpread=()=>startReaderTurn("next");
-  const preloadPrevStart=readerPage>1?Math.max(1,readerPage-2):null;
-  const preloadNextStart=readerTotalPages<1?null:(readerPage===0?1:(readerPage<lastSpreadStart?Math.min(lastSpreadStart,readerPage+2):null));
+  const preloadPrevStart=readerPage===backCoverPage?lastSpreadStart:readerPage>1?Math.max(1,readerPage-2):null;
+  const preloadNextStart=readerTotalPages<1?null:(readerPage===0?1:(readerPage>0&&readerPage<lastSpreadStart?Math.min(lastSpreadStart,readerPage+2):null));
   useEffect(()=>{
-    return ()=>{if(readerTurnTimerRef.current!==null)window.clearTimeout(readerTurnTimerRef.current)};
+    return ()=>{
+      if(readerTurnTimerRef.current!==null)window.clearTimeout(readerTurnTimerRef.current);
+      if(readerFinishTimerRef.current!==null)window.clearTimeout(readerFinishTimerRef.current);
+    };
   },[]);
   useEffect(()=>{
     if(view!=="lector")return;
-    const starts=[preloadPrevStart,preloadNextStart].filter((value):value is number=>typeof value==="number"&&value>0);
+    const starts=[preloadPrevStart,preloadNextStart].filter((value):value is number=>typeof value==="number"&&value>0&&value<=lastSpreadStart);
     for(const start of starts){
       for(const page of [readerPages[start-1],readerPages[start]]){
         if(!page?.artwork)continue;
@@ -377,7 +409,7 @@ export default function Home(){
         image.decode?.().catch(()=>undefined);
       }
     }
-  },[view,readerPage,preloadPrevStart,preloadNextStart,readerPages]);
+  },[view,readerPage,preloadPrevStart,preloadNextStart,readerPages,lastSpreadStart]);
   useEffect(()=>{
     if(view!=="lector")return;
     const onKeyDown=(event:KeyboardEvent)=>{
@@ -386,7 +418,7 @@ export default function Home(){
     };
     window.addEventListener("keydown",onKeyDown);
     return ()=>window.removeEventListener("keydown",onKeyDown);
-  },[view,readerPage,readerAnimating,readerTotalPages]);
+  },[view,readerPage,readerAnimating,readerClosing,readerTotalPages]);
   const changeReaderZoom=(delta:number)=>setReaderZoom(current=>Math.min(2,Math.max(.7,Math.round((current+delta)*10)/10)));
   const clampReaderZoom=(value:number)=>Math.min(2,Math.max(.7,Math.round(value*20)/20));
   const pinchDistance=()=>{
@@ -439,6 +471,25 @@ export default function Home(){
       setReturnQuestionsLoading(false);
     }
   };
+  useEffect(()=>{
+    if(view!=="lector"||readerPage!==backCoverPage||readerAnimating||modal==="return"||readerFinishShownRef.current)return;
+    readerFinishShownRef.current=true;
+    setReaderClosing(false);
+    if(readerFinishTimerRef.current!==null)window.clearTimeout(readerFinishTimerRef.current);
+    const closeTimer=window.setTimeout(()=>setReaderClosing(true),180);
+    readerFinishTimerRef.current=window.setTimeout(()=>{
+      setReaderClosing(false);
+      openReturnModal();
+      readerFinishTimerRef.current=null;
+    },1180);
+    return ()=>{
+      window.clearTimeout(closeTimer);
+      if(readerFinishTimerRef.current!==null){
+        window.clearTimeout(readerFinishTimerRef.current);
+        readerFinishTimerRef.current=null;
+      }
+    };
+  },[view,readerPage,backCoverPage,readerAnimating,modal,owned?.id]);
   const returnBook=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
     if(!owned||!loanId)return;
@@ -456,7 +507,7 @@ export default function Home(){
       setBooks(current=>current.map(book=>book.id===owned.id?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||book.reads}:book));
       setSelected(current=>current?.id===owned.id?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||current.reads}:current);
       setCurrentUser(user=>user?{...user,pagesRead:user.pagesRead+owned.pages}:user);
-      setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);
+      setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);setReaderClosing(false);setReaderAnimating(false);setReaderPendingPage(null);
       flash("Libro devuelto. Tu calificación y aportaciones quedaron guardadas.");
     }catch(error){
       flash(error instanceof Error?error.message:"No se pudo devolver el libro.");
@@ -665,7 +716,7 @@ export default function Home(){
 
     {view==="subir"&&currentUser?.role==="admin"&&<section className="page upload-page"><button className="back" onClick={()=>setView("biblioteca")}>← Volver al estante</button><div className="upload-wrap"><div className="upload-copy"><p className="eyebrow">SUMAR A LA COLECCIÓN</p><h1>Todo libro nuevo abre una puerta</h1><p>Sube el archivo y lo reconstruiremos para el lector: extraemos el texto, recuperamos material visual cuando es posible y guardamos una versión web. El PDF original no se conserva.</p><blockquote>“Una biblioteca no se hace; crece.”<span>— Augustine Birrell</span></blockquote></div><form className="book-form" onSubmit={submitBook}><div className="drop"><span>＋</span><b>Archivo completo del libro</b><small>PDF o TXT · máximo 25 MB · reconstrucción automática</small><input name="file" required type="file" accept=".pdf,.txt,text/plain,application/pdf" aria-label="Archivo del libro" onChange={e=>handleBookFile(e.target.files?.[0])}/>{fileInfo&&<em className={detectedPages>0?"file-ready":"file-error"}>{fileInfo}</em>}</div><div className="field full"><label>Título</label><input name="title" required maxLength={180} placeholder="Ej. El jardín secreto"/></div><div className="field"><label>Autor</label><input name="author" required maxLength={140} placeholder="Nombre del autor"/></div><div className="field"><label>Año</label><input name="year" required type="number" min="1" max={new Date().getFullYear()+1} placeholder="2024"/></div><div className="field"><label>Número de páginas</label><input value={detectedPages||""} readOnly placeholder="Se calcula al subir el archivo"/><input type="hidden" name="pages" value={detectedPages||""}/><small>{detectedPages>0?"Páginas reconstruidas desde el documento":"Selecciona primero el archivo"}</small></div><div className="field"><label>Tipo</label><select name="type" required><option>Libro</option><option>Revista</option><option>Álbum ilustrado</option><option>Biografía</option><option>Otro</option></select></div><div className="field"><label>Ejemplares disponibles</label><input name="copies" required type="number" defaultValue="1" min="1" max="1000"/></div><div className="field full"><label>Sinopsis</label><textarea name="synopsis" required maxLength={3000} placeholder="Cuéntanos de qué trata, sin revelar demasiado…"/></div><button className="primary submit" disabled={bookUploading||detectedPages<1||!bookPackage}>{bookUploading?"Guardando libro…":detectedPages<1?"Reconstruyendo libro…":"Guardar libro reconstruido"}</button></form></div></section>}
 
-    {view==="lector"&&owned&&<section className="reader reader-book-mode"><div className="reader-bar"><button onClick={()=>setView("biblioteca")}>← Cerrar lector</button><div className="reader-title"><b>{owned.title}</b><span>{readerPage===0?"Portada":`Páginas ${readerPage}–${Math.min(readerTotalPages,readerPage+1)} de ${readerTotalPages}`}</span></div><div className="reader-tools"><small>Zoom</small><button type="button" onClick={()=>changeReaderZoom(-.1)} disabled={readerZoom<=.7} aria-label="Alejar">−</button><span>{Math.round(readerZoom*100)}%</span><button type="button" onClick={()=>changeReaderZoom(.1)} disabled={readerZoom>=2} aria-label="Acercar">+</button></div></div><div className="reader-stage book-stage" onPointerDown={handleReaderPointerDown} onPointerMove={handleReaderPointerMove} onPointerUp={handleReaderPointerEnd} onPointerCancel={handleReaderPointerEnd} onWheel={handleReaderWheel}>{readerLoading?<div className="reader-message">Reconstruyendo la lectura…</div>:readerError?<div className="reader-message error">{readerError}</div>:<><button className="reader-side-nav prev" onClick={previousReaderSpread} disabled={readerAnimating||readerPage===0} aria-label="Páginas anteriores">‹</button><div className="reader-book-scene"><div className="reader-zoom-shell" style={{transform:`scale(${readerZoom})`}}>{readerPage===0?<div className={`reader-cover-shell ${readerAnimating&&readerPendingPage===1?"opening":""}`}><button className="reader-cover" style={{background:owned.cover}} onClick={nextReaderSpread} disabled={readerAnimating} aria-label="Abrir libro">{readerPages[0]?.artwork&&<img className="reader-cover-art" src={readerPages[0].artwork} alt="Portada recuperada del documento"/>}<span className="reader-cover-kicker">Biblioteca MJVC Mérida</span><strong>{owned.title}</strong><small>{owned.author}</small><i>Haz clic para abrir</i></button>{readerAnimating&&readerPendingPage===1&&<div className="reader-cover-underlay"><ReaderSpread pages={readerPages} start={1}/></div>}</div>:readerAnimating&&readerPendingPage&&readerPendingPage>0?<AnimatedReaderSpread pages={readerPages} currentStart={readerPage} targetStart={readerPendingPage} direction={readerTurn}/>:<ReaderSpread pages={readerPages} start={readerPage}/>}</div></div><button className="reader-side-nav next" onClick={nextReaderSpread} disabled={readerAnimating||readerTotalPages<1||(readerPage!==0&&readerPage>=lastSpreadStart)} aria-label={readerPage===0?"Abrir libro":"Páginas siguientes"}>›</button><div className="reader-preload-cache" aria-hidden="true">{preloadPrevStart&&preloadPrevStart>0&&<ReaderSpread pages={readerPages} start={preloadPrevStart} className="preloaded-prev"/>}{preloadNextStart&&preloadNextStart>0&&<ReaderSpread pages={readerPages} start={preloadNextStart} className="preloaded-next"/>}</div></>}</div><div className="reader-book-footer"><span>{readerPage===0?"Portada":`Leyendo ${Math.min(readerTotalPages,readerPage+1)} de ${readerTotalPages}`}</span><small>Se precargan las páginas vecinas · Flechas del teclado · Pellizca o usa el trackpad para hacer zoom</small></div></section>}
+    {view==="lector"&&owned&&<section className="reader reader-book-mode"><div className="reader-bar"><button onClick={()=>setView("biblioteca")}>← Cerrar lector</button><div className="reader-title"><b>{owned.title}</b><span>{readerPage===0?"Portada":readerPage===backCoverPage?"Contraportada":`Páginas ${readerPage}–${Math.min(readerTotalPages,readerPage+1)} de ${readerTotalPages}`}</span></div><div className="reader-tools"><small>Zoom</small><button type="button" onClick={()=>changeReaderZoom(-.1)} disabled={readerZoom<=.7} aria-label="Alejar">−</button><span>{Math.round(readerZoom*100)}%</span><button type="button" onClick={()=>changeReaderZoom(.1)} disabled={readerZoom>=2} aria-label="Acercar">+</button></div></div><div className="reader-stage book-stage" onPointerDown={handleReaderPointerDown} onPointerMove={handleReaderPointerMove} onPointerUp={handleReaderPointerEnd} onPointerCancel={handleReaderPointerEnd} onWheel={handleReaderWheel}>{readerLoading?<div className="reader-message">Reconstruyendo la lectura…</div>:readerError?<div className="reader-message error">{readerError}</div>:<><button className="reader-side-nav prev" onClick={previousReaderSpread} disabled={readerAnimating||readerClosing||readerPage===0} aria-label="Páginas anteriores">‹</button><div className="reader-book-scene"><div className="reader-zoom-shell" style={{transform:`scale(${readerZoom})`}}>{readerPage===0?<div className={`reader-cover-shell ${readerAnimating&&readerPendingPage===1?"opening":""}`}><button className="reader-cover" style={{background:owned.cover}} onClick={nextReaderSpread} disabled={readerAnimating} aria-label="Abrir libro">{readerPages[0]?.artwork&&<img className="reader-cover-art" src={readerPages[0].artwork} alt="Portada recuperada del documento"/>}<span className="reader-cover-kicker">Biblioteca MJVC Mérida</span><strong>{owned.title}</strong><small>{owned.author}</small><i>Haz clic para abrir</i></button>{readerAnimating&&readerPendingPage===1&&<div className="reader-cover-underlay"><ReaderSpread pages={readerPages} start={1}/></div>}</div>:readerPage===backCoverPage?<div className={`reader-back-cover-shell ${readerClosing?"closing":""} ${readerAnimating&&readerPendingPage===lastSpreadStart?"reopening":""}`}><div className="reader-back-cover" style={{background:owned.cover}}><span className="reader-back-cover-kicker">Biblioteca MJVC Mérida</span><strong>Fin</strong><b>{owned.title}</b><small>{owned.author}</small><i>Gracias por llegar hasta la última página.</i></div></div>:readerAnimating&&readerPendingPage===backCoverPage?<ReaderEndTurn pages={readerPages} start={readerPage}/>:readerAnimating&&readerPendingPage&&readerPendingPage>0?<AnimatedReaderSpread pages={readerPages} currentStart={readerPage} targetStart={readerPendingPage} direction={readerTurn}/>:<ReaderSpread pages={readerPages} start={readerPage}/>}</div></div><button className="reader-side-nav next" onClick={nextReaderSpread} disabled={readerAnimating||readerClosing||readerTotalPages<1||readerPage===backCoverPage} aria-label={readerPage===0?"Abrir libro":readerPage===lastSpreadStart?"Ir a la contraportada":"Páginas siguientes"}>›</button><div className="reader-preload-cache" aria-hidden="true">{preloadPrevStart&&preloadPrevStart>0&&preloadPrevStart<=lastSpreadStart&&<ReaderSpread pages={readerPages} start={preloadPrevStart} className="preloaded-prev"/>}{preloadNextStart&&preloadNextStart>0&&preloadNextStart<=lastSpreadStart&&<ReaderSpread pages={readerPages} start={preloadNextStart} className="preloaded-next"/>}</div></>}</div><div className="reader-book-footer"><span>{readerPage===0?"Portada":readerPage===backCoverPage?"Contraportada":`Leyendo ${Math.min(readerTotalPages,readerPage+1)} de ${readerTotalPages}`}</span><small>{readerPage===backCoverPage?"Cerrando el libro…":readerPage===lastSpreadStart?"La siguiente vuelta lleva a la contraportada":"Se precargan las páginas vecinas · Flechas del teclado · Pellizca o usa el trackpad para hacer zoom"}</small></div></section>}
 
     {modal==="detail"&&selected&&<div className="modal-back" onClick={()=>setModal(null)}><div className="book-modal" onClick={e=>e.stopPropagation()}><button className="close" onClick={()=>setModal(null)}>×</button><div className="modal-cover" style={{background:selected.cover}}><span>{selected.title}</span><small>{selected.author}</small></div><div className="modal-copy"><p className="eyebrow">{selected.type.toUpperCase()}</p><h2>{selected.title}</h2><p className="by">{selected.author} · {selected.year}</p><div className="rating"><Stars rating={selected.rating}/><b>{selected.rating}</b><span>({selected.reads} {selected.reads===1?"lectura":"lecturas"})</span></div><p>{selected.synopsis}</p><div className="meta-row"><span><b>{selected.pages}</b> páginas</span><span><b>{selected.available}/{selected.copies}</b> disponibles</span></div><button className="primary wide" disabled={!selected.available} onClick={takeBook}>{selected.available?"Tomar este libro":"En préstamo"}</button></div></div></div>}
     {modal==="return"&&owned&&<div className="modal-back"><form className="return-modal" onSubmit={returnBook}><button type="button" className="close" onClick={()=>setModal(null)}>×</button><p className="eyebrow">ANTES DE DEVOLVERLO</p><h2>Deja una huella para quien sigue</h2><p>Tu calificación ayuda a la comunidad. También puedes responder preguntas de lectores anteriores y dejar una nueva.</p><div className="reader-questions"><div className="question-heading"><b>Preguntas de lectores anteriores</b><small>Solo pedimos responder un máximo de 3 preguntas. Si existen más, las demás no son obligatorias y quedarán para futuras lecturas.</small></div>{returnQuestionsLoading?<p className="question-empty">Cargando preguntas…</p>:returnQuestions.length===0?<p className="question-empty">Todavía no hay preguntas pendientes para ti.</p>:returnQuestions.map((question,index)=><label key={question.id}><span>{index+1}. {question.body}</span><small>Propuesta por {question.user}</small><textarea name={`answer-${question.id}`} required placeholder="Escribe tu respuesta…"/></label>)}{returnExtraQuestions>0&&<p className="question-extra">Hay {returnExtraQuestions} {returnExtraQuestions===1?"pregunta adicional":"preguntas adicionales"}; no necesitas responderlas ahora.</p>}</div><label>Propón una pregunta para un futuro lector <small className="optional-note">Opcional</small><textarea name="newQuestion" maxLength={500} placeholder="¿Qué te gustaría preguntarles? Puedes dejarlo vacío."/></label><label>¿Cómo calificas esta lectura?<Stars rating={returnRating} onSelect={setReturnRating}/><small className="rating-help">{returnRating?`${returnRating} de 5 estrellas`:"Selecciona de 1 a 5 estrellas"}</small></label><button className="primary wide" disabled={returnQuestionsLoading}>Completar devolución</button></form></div>}

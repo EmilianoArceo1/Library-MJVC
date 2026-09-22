@@ -744,3 +744,250 @@
   .reader-sheet-inner{padding:30px 28px 64px!important}
   .reader-sheet:after{inset:19px 20px 40px}
 }
+
+
+/* Connected covers, fixed page frame, and seamless spread commits */
+.reader-spread{
+  animation:none!important;
+}
+.reader-sheet:after{
+  inset:30px 36px 58px!important;
+}
+.reader-sheet-inner{
+  padding:52px 54px 92px!important;
+  overflow:hidden!important;
+}
+.reader-sheet p{
+  line-height:1.56;
+}
+.reader-page-number{
+  bottom:23px!important;
+}
+.reader-inside-cover{
+  background:
+    radial-gradient(circle at 50% 40%,rgba(255,255,255,.62),transparent 55%),
+    linear-gradient(90deg,#eadfce,#f6eedf 18%,#f3ead9 82%,#dfd0bb);
+}
+.reader-inside-cover .reader-sheet-inner{
+  display:grid;
+  place-items:center;
+}
+.reader-inside-cover-mark{
+  color:#9b8a75;
+  font:700 9px Arial,sans-serif;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  opacity:.58;
+}
+
+/* The first spread already exists underneath the cover while it opens. */
+.reader-cover-shell{
+  position:relative;
+  width:min(920px,calc(100vw - 220px));
+  min-width:700px;
+  height:min(650px,calc(100vh - 190px));
+  min-height:500px;
+}
+.reader-cover-shell>.reader-cover{
+  position:relative;
+  z-index:5;
+}
+.reader-cover-underlay{
+  display:block!important;
+  position:absolute;
+  inset:0;
+  z-index:1;
+  opacity:0;
+  transform:scale(.76);
+  transform-origin:center center;
+  pointer-events:none;
+}
+.reader-cover-underlay .reader-spread{
+  width:100%!important;
+  min-width:0!important;
+  height:100%!important;
+  min-height:0!important;
+  filter:drop-shadow(0 18px 28px #0007);
+}
+.reader-cover-shell.opening .reader-cover-underlay{
+  animation:readerFirstSpreadReveal 720ms cubic-bezier(.18,.7,.16,1) both;
+}
+@keyframes readerFirstSpreadReveal{
+  0%{opacity:0;transform:scale(.72)}
+  35%{opacity:.28;transform:scale(.8)}
+  72%{opacity:.85;transform:scale(.97)}
+  100%{opacity:1;transform:scale(1)}
+}
+
+/* Back cover is a real endpoint, not a detached modal transition. */
+.reader-back-cover-shell{
+  position:relative;
+  width:min(920px,calc(100vw - 220px));
+  min-width:700px;
+  height:min(650px,calc(100vh - 190px));
+  min-height:500px;
+  display:grid;
+  place-items:center;
+  perspective:1800px;
+  animation:readerBackCoverArrive .28s ease-out both;
+}
+.reader-back-cover-shell:before{
+  content:"";
+  position:absolute;
+  width:min(360px,58vw);
+  aspect-ratio:.68;
+  border-radius:8px 22px 22px 8px;
+  background:
+    repeating-linear-gradient(90deg,#efe7d9 0,#faf6ed 2px,#e8dfd0 4px);
+  box-shadow:9px 11px 0 #15100d88,0 28px 50px #0006;
+  transform:translate(-8px,5px) rotateY(2deg);
+  transition:transform .7s ease,opacity .7s ease;
+}
+.reader-back-cover{
+  width:min(360px,58vw);
+  aspect-ratio:.68;
+  box-sizing:border-box;
+  border-radius:22px 8px 8px 22px;
+  padding:48px 40px;
+  color:#f7ebdc;
+  position:relative;
+  z-index:2;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  overflow:hidden;
+  box-shadow:
+    inset 13px 0 #ffffff12,
+    inset -2px 0 #00000018,
+    -10px 13px 0 #15100dcc,
+    0 30px 55px #0008;
+  transform:rotateY(4deg);
+  transform-origin:right center;
+  transition:transform .25s ease;
+}
+.reader-back-cover:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(235deg,#00000020,transparent 35%,#ffffff0d 76%);
+  pointer-events:none;
+}
+.reader-back-cover>*{position:relative;z-index:2}
+.reader-back-cover-kicker{
+  position:absolute;
+  top:36px;
+  left:30px;
+  right:30px;
+  font:700 9px Arial,sans-serif;
+  letter-spacing:1.6px;
+  text-transform:uppercase;
+  opacity:.8;
+}
+.reader-back-cover strong{
+  font:700 48px/1 Georgia,serif;
+}
+.reader-back-cover b{
+  margin-top:18px;
+  font:700 20px/1.2 Georgia,serif;
+}
+.reader-back-cover small{
+  margin-top:8px;
+  font:12px Arial,sans-serif;
+}
+.reader-back-cover i{
+  margin-top:38px;
+  max-width:220px;
+  color:#f1e4d5c4;
+  font:10px/1.5 Arial,sans-serif;
+  font-style:normal;
+}
+@keyframes readerBackCoverArrive{
+  from{opacity:.4;transform:scale(1.03) translateX(18px)}
+  to{opacity:1;transform:scale(1) translateX(0)}
+}
+.reader-back-cover-shell.closing:before{
+  opacity:.18;
+  transform:translate(0,0) rotateY(0) scale(.98);
+}
+.reader-back-cover-shell.closing .reader-back-cover{
+  animation:readerBookClose 1s cubic-bezier(.2,.72,.18,1) both;
+}
+@keyframes readerBookClose{
+  0%{transform:rotateY(4deg) scale(1)}
+  45%{transform:rotateY(13deg) scale(.985) translateX(-4px)}
+  100%{transform:rotateY(0deg) scale(.94) translateY(4px);box-shadow:inset 9px 0 #ffffff10,-6px 8px 0 #15100dbb,0 18px 34px #0007}
+}
+.reader-back-cover-shell.reopening .reader-back-cover{
+  animation:readerBookReopen 720ms cubic-bezier(.18,.7,.16,1) both;
+}
+@keyframes readerBookReopen{
+  0%{transform:rotateY(0) scale(.94)}
+  100%{transform:rotateY(58deg) scale(1);opacity:.15}
+}
+
+/* The last physical leaf reveals the inside of the back cover. */
+.reader-ending-spread .reader-turn-face.back .reader-inside-cover{
+  box-shadow:inset 16px 0 26px -22px #26190faa;
+}
+
+/* Hidden preloads match visible reader dimensions, so their text fitting is reusable. */
+.reader-preload-cache{
+  width:920px!important;
+  height:650px!important;
+}
+.reader-preload-cache .reader-sheet-inner{
+  padding:52px 54px 92px!important;
+}
+@media(max-width:900px){
+  .reader-cover-shell,
+  .reader-back-cover-shell{
+    width:720px;
+    min-width:620px;
+    height:540px;
+    min-height:540px;
+  }
+  .reader-preload-cache{
+    width:720px!important;
+    height:540px!important;
+  }
+  .reader-preload-cache .reader-spread{
+    width:720px!important;
+    min-width:720px!important;
+    height:540px!important;
+    min-height:540px!important;
+  }
+  .reader-sheet-inner{padding:42px 42px 80px!important}
+  .reader-sheet:after{inset:25px 29px 52px!important}
+}
+@media(max-width:650px){
+  .reader-cover-shell,
+  .reader-back-cover-shell{
+    width:580px;
+    min-width:580px;
+    height:470px;
+    min-height:470px;
+  }
+  .reader-preload-cache{
+    width:580px!important;
+    height:470px!important;
+  }
+  .reader-preload-cache .reader-spread{
+    width:580px!important;
+    min-width:580px!important;
+    height:470px!important;
+    min-height:470px!important;
+  }
+  .reader-sheet-inner{padding:33px 31px 70px!important}
+  .reader-sheet:after{inset:21px 22px 45px!important}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .reader-cover-shell.opening .reader-cover-underlay,
+  .reader-back-cover-shell,
+  .reader-back-cover-shell.closing .reader-back-cover,
+  .reader-back-cover-shell.reopening .reader-back-cover{
+    animation-duration:1ms!important;
+  }
+}
