@@ -157,7 +157,10 @@ export default function Home(){
         const sessionPayload=await sessionResponse.json();
         if(cancelled)return;
         if(notificationResponse.ok)setNotificationUnread(Number(notificationPayload.unread)||0);
-        if(sessionResponse.ok&&sessionPayload.user)setCurrentUser(sessionPayload.user);
+        if(sessionResponse.ok){
+          setCurrentUser(sessionPayload.user||null);
+          if(!sessionPayload.user){setNotificationUnread(0);setView("biblioteca");setModal(null)}
+        }
       }catch(error){
         console.error("No se pudieron actualizar las notificaciones",error);
       }
