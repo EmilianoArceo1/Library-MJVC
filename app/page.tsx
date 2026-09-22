@@ -3,6 +3,7 @@
 import { type FormEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type View = "biblioteca" | "comunidad" | "foro" | "subir" | "lector";
+type ReaderMode = "book" | "continuous";
 type Book = { id:number; title:string; author:string; year:number; pages:number; type:string; color:string; cover:string; synopsis:string; rating:number; available:number; copies:number; reads:number; readers:string[]; progress?:number };
 type Reader = { id:string; name:string; pages:number; role:"reader"|"admin"; now:string|null; color:string; photoUrl:string|null };
 type ForumPost = { id:number; user:string; book:string; time:string; text:string; likes:number; replies:number; color:string; photoUrl?:string|null };
@@ -108,9 +109,9 @@ export default function Home(){
   const [owned,setOwned]=useState<Book|null>(null),[toast,setToast]=useState(""),[modal,setModal]=useState<"detail"|"return"|"profile"|null>(null),[posts,setPosts]=useState<ForumPost[]>(initialPosts),[draft,setDraft]=useState(""),[publishing,setPublishing]=useState(false),[postBook,setPostBook]=useState(""),[liked,setLiked]=useState<number[]>([]),[reactionCounts,setReactionCounts]=useState<Record<string,number>>({}),[reactionBusy,setReactionBusy]=useState<string[]>([]);
   const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookPackage,setBookPackage]=useState(""),[bookUploading,setBookUploading]=useState(false);
   const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false);
-  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next"),[readerPendingPage,setReaderPendingPage]=useState<number|null>(null),[readerAnimating,setReaderAnimating]=useState(false),[readerClosing,setReaderClosing]=useState(false),[readerReturnVisible,setReaderReturnVisible]=useState(false);
+  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerMode,setReaderMode]=useState<ReaderMode>("book"),[continuousFontSize,setContinuousFontSize]=useState(27),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next"),[readerPendingPage,setReaderPendingPage]=useState<number|null>(null),[readerAnimating,setReaderAnimating]=useState(false),[readerClosing,setReaderClosing]=useState(false),[readerReturnVisible,setReaderReturnVisible]=useState(false);
   const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false),[returnQuestions,setReturnQuestions]=useState<ReaderQuestion[]>([]),[returnQuestionsLoading,setReturnQuestionsLoading]=useState(false),[returnExtraQuestions,setReturnExtraQuestions]=useState(0);
-  const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null),readerFinishTimerRef=useRef<number|null>(null),readerFinishShownRef=useRef(false);
+  const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null),readerFinishTimerRef=useRef<number|null>(null),readerFinishShownRef=useRef(false),readerContinuousRef=useRef<HTMLDivElement|null>(null),continuousProgressTimerRef=useRef<number|null>(null);
   const [shelfPage,setShelfPage]=useState(0);
   const sortedBooks=useMemo(()=>[...books].sort((a,b)=>a.title.localeCompare(b.title,"es",{sensitivity:"base"})),[books]);
   const filtered=useMemo(()=>sortedBooks.filter(b=>(!search||`${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()))&&(!year||String(b.year)===year)&&(!type||b.type===type)),[search,year,type,sortedBooks]);
@@ -380,7 +381,7 @@ export default function Home(){
     return ()=>{cancelled=true};
   },[view,owned?.id]);
   useEffect(()=>{
-    if(view!=="lector"||!loanId||readerTotalPages<1)return;
+    if(view!=="lector"||readerMode!=="book"||!loanId||readerTotalPages<1)return;
     const lastVisible=readerPage===0?0:Math.min(readerTotalPages,readerPage+1);
     const progress=lastVisible===0?0:Math.round((lastVisible/readerTotalPages)*100);
     setOwned(current=>current?{...current,progress}:current);
@@ -388,7 +389,7 @@ export default function Home(){
       fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress})}).catch(error=>console.error("No se pudo guardar el progreso",error));
     },450);
     return ()=>clearTimeout(timer);
-  },[view,loanId,readerPage,readerTotalPages]);
+  },[view,readerMode,loanId,readerPage,readerTotalPages]);
   const lastSpreadStart=readerTotalPages<1?0:(readerTotalPages%2===0?Math.max(1,readerTotalPages-1):readerTotalPages);
   const backCoverPage=readerTotalPages+1;
   const startReaderTurn=(direction:"next"|"prev")=>{
@@ -438,14 +439,58 @@ export default function Home(){
     }
   },[view,readerPage,preloadPrevStart,preloadNextStart,readerPages,lastSpreadStart]);
   useEffect(()=>{
-    if(view!=="lector")return;
+    if(view!=="lector"||readerMode!=="book")return;
     const onKeyDown=(event:KeyboardEvent)=>{
       if(event.key==="ArrowLeft"){event.preventDefault();previousReaderSpread()}
       if(event.key==="ArrowRight"){event.preventDefault();nextReaderSpread()}
     };
     window.addEventListener("keydown",onKeyDown);
     return ()=>window.removeEventListener("keydown",onKeyDown);
-  },[view,readerPage,readerAnimating,readerClosing,readerTotalPages]);
+  },[view,readerMode,readerPage,readerAnimating,readerClosing,readerTotalPages]);
+  const switchReaderMode=(mode:ReaderMode)=>{
+    if(mode===readerMode)return;
+    if(mode==="book"){
+      setReaderPage(spreadFromProgress(owned?.progress||0,readerTotalPages));
+      setReaderReturnVisible(false);
+      setReaderClosing(false);
+      readerFinishShownRef.current=false;
+    }
+    setReaderMode(mode);
+  };
+  const changeContinuousFont=(delta:number)=>setContinuousFontSize(current=>Math.min(42,Math.max(18,current+delta)));
+  const saveContinuousProgress=(progress:number)=>{
+    const safeProgress=Math.max(0,Math.min(100,Math.round(progress)));
+    setOwned(current=>current?{...current,progress:safeProgress}:current);
+    if(continuousProgressTimerRef.current!==null)window.clearTimeout(continuousProgressTimerRef.current);
+    continuousProgressTimerRef.current=window.setTimeout(()=>{
+      if(!loanId)return;
+      fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress:safeProgress})}).catch(error=>console.error("No se pudo guardar el progreso continuo",error));
+      continuousProgressTimerRef.current=null;
+    },500);
+  };
+  const handleContinuousScroll=()=>{
+    const node=readerContinuousRef.current;
+    if(!node)return;
+    const max=node.scrollHeight-node.clientHeight;
+    saveContinuousProgress(max<=0?100:(node.scrollTop/max)*100);
+  };
+  const handleContinuousWheel=(event:ReactWheelEvent<HTMLDivElement>)=>{
+    if(!event.ctrlKey)return;
+    event.preventDefault();
+    changeContinuousFont(event.deltaY<0?1:-1);
+  };
+  useEffect(()=>{
+    if(view!=="lector"||readerMode!=="continuous"||readerLoading||readerPages.length===0)return;
+    const node=readerContinuousRef.current;
+    if(!node)return;
+    const progress=owned?.progress||0;
+    const frame=requestAnimationFrame(()=>{
+      const max=node.scrollHeight-node.clientHeight;
+      node.scrollTop=max>0?max*(progress/100):0;
+    });
+    return ()=>cancelAnimationFrame(frame);
+  },[view,readerMode,readerLoading,readerPages.length,owned?.id]);
+  useEffect(()=>()=>{if(continuousProgressTimerRef.current!==null)window.clearTimeout(continuousProgressTimerRef.current)},[]);
   const changeReaderZoom=(delta:number)=>setReaderZoom(current=>Math.min(2,Math.max(.7,Math.round((current+delta)*10)/10)));
   const clampReaderZoom=(value:number)=>Math.min(2,Math.max(.7,Math.round(value*20)/20));
   const pinchDistance=()=>{
