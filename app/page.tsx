@@ -328,7 +328,8 @@ export default function Home(){
     }
   };
   const takeBook=async()=>{
-    if(!currentUser){setAuthView("login");flash("Inicia sesión para tomar un libro.");return}
+    if(!currentUser){setAuthView("signup");flash("Regístrate para tomar un libro. Si ya tienes cuenta, puedes iniciar sesión desde el formulario.");return}
+    if(currentUser.approvalStatus!=="approved"){setView("notificaciones");setModal(null);flash(currentUser.approvalStatus==="pending"?"Tu registro sigue pendiente de aprobación.":"Tu cuenta no está aprobada para tomar libros.");return}
     if(!selected){flash("Selecciona un libro primero.");return}
     if(selected.available<1){flash("Ese ejemplar está en préstamo.");return}
     if(owned){flash("Devuelve tu lectura actual antes de tomar otra.");return}
@@ -336,11 +337,10 @@ export default function Home(){
       const response=await fetch("/api/loans",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({bookId:selected.id})});
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.error||"No se pudo tomar el libro");
-      const updatedReads=selected.reads+1;
       setLoanId(Number(payload.loan.id));
-      setOwned({...selected,available:payload.loan.book.available,reads:updatedReads,progress:0});
-      setBooks(current=>current.map(book=>book.id===selected.id?{...book,available:Math.max(0,book.available-1),reads:book.reads+1}:book));
-      setSelected(current=>current?.id===selected.id?{...current,available:Math.max(0,current.available-1),reads:updatedReads}:current);
+      setOwned({...selected,available:payload.loan.book.available,progress:0});
+      setBooks(current=>current.map(book=>book.id===selected.id?{...book,available:Math.max(0,book.available-1)}:book));
+      setSelected(current=>current?.id===selected.id?{...current,available:Math.max(0,current.available-1)}:current);
       setModal(null);
       flash(`“${selected.title}” ya está en tu poder.`);
     }catch(error){
@@ -710,7 +710,7 @@ export default function Home(){
   };
   const submitBook=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
-    if(!currentUser||currentUser.role!=="admin"||bookUploading)return;
+    if(!currentUser||currentUser.approvalStatus!=="approved"||bookUploading)return;
     const form=event.currentTarget;
     const data=new FormData(form);
     const file=data.get("file");
@@ -718,11 +718,22 @@ export default function Home(){
     if(detectedPages<1||!bookPackage){flash("Espera a que terminemos de reconstruir el documento.");return}
     data.set("pages",String(detectedPages));
     data.set("contentPackage",bookPackage);
+    const canPublishDirectly=currentUser.role==="admin"||currentUser.role==="advisor";
+    const endpoint=canPublishDirectly?"/api/books":"/api/book-requests";
     setBookUploading(true);
     try{
-      const response=await fetch("/api/books",{method:"POST",body:data});
+      const response=await fetch(endpoint,{method:"POST",body:data});
       const payload=await response.json();
-      if(!response.ok)throw new Error(payload.error||"No se pudo guardar el libro");
+      if(!response.ok)throw new Error(payload.error||(canPublishDirectly?"No se pudo guardar el libro":"No se pudo enviar la propuesta"));
+      form.reset();
+      setFileInfo("");
+      setDetectedPages(0);
+      setBookPackage("");
+      if(!canPublishDirectly){
+        setView("biblioteca");
+        flash(payload.message||"Tu propuesta fue enviada para revisión. Te notificaremos la decisión.");
+        return;
+      }
       const palette=["#b63d2f","#e4ad3b","#2d7c73","#745a9c","#315f86","#7e9445"];
       const covers=["linear-gradient(145deg,#274b3d,#6f9b6b)","linear-gradient(145deg,#12354b,#2d7794)","linear-gradient(145deg,#7c2636,#d35b4d)","linear-gradient(145deg,#493362,#b45e75)","linear-gradient(145deg,#3b214e,#b37838)","linear-gradient(145deg,#213e55,#699c79)"];
       const index=books.length;
@@ -731,14 +742,10 @@ export default function Home(){
       setSelected(created);
       setPostBook(current=>current||created.title);
       setShelfPage(0);
-      form.reset();
-      setFileInfo("");
-      setDetectedPages(0);
-      setBookPackage("");
       setView("biblioteca");
       flash(`“${created.title}” ya está guardado en la biblioteca.`);
     }catch(error){
-      flash(error instanceof Error?error.message:"No se pudo guardar el libro.");
+      flash(error instanceof Error?error.message:"No se pudo procesar el libro.");
     }finally{
       setBookUploading(false);
     }
@@ -813,7 +820,15 @@ export default function Home(){
       if(!response.ok)throw new Error(payload.error||"No se pudo autenticar");
       setCurrentUser(payload.user);
       setAuthView(null);
-      flash(authView==="signup"?(payload.user?.role==="admin"?"Cuenta de administrador configurada.":"Cuenta creada correctamente."):"Bienvenido de nuevo.");
+      if(authView==="signup"){
+        flash(payload.pending?"Tu solicitud fue enviada al administrador para comprobar y aceptar el registro.":payload.user?.role==="admin"?"Cuenta de administrador configurada.":"Cuenta creada correctamente.");
+      }else if(payload.user?.approvalStatus==="pending"){
+        flash("Tu cuenta está pendiente de aprobación. Puedes consultar Notificaciones para ver el estado.");
+      }else if(payload.user?.approvalStatus==="rejected"){
+        flash("Tu registro fue rechazado. Revisa Notificaciones para ver quién tomó la decisión.");
+      }else{
+        flash("Bienvenido de nuevo.");
+      }
     }catch(error){
       flash(error instanceof Error?error.message:"No se pudo autenticar.");
     }finally{
@@ -861,6 +876,7 @@ export default function Home(){
   const logout=async()=>{
     try{await fetch("/api/auth/logout",{method:"POST"})}catch(error){console.error("No se pudo cerrar la sesión en el servidor",error)}
     setCurrentUser(null);
+    setNotificationUnread(0);
     setLiked([]);
     setProfileReactions([]);
     setView("biblioteca");
