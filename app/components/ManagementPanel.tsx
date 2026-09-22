@@ -131,6 +131,13 @@ export default function ManagementPanel({
     return request ? `Libro “${request.title}”` : `Libro #${record.requestId}`;
   };
 
+  const currentStatusForDecision = (record: DecisionRecord) => {
+    if (record.requestType === "registration") {
+      return registrations.find((item) => String(item.id) === String(record.requestId))?.status;
+    }
+    return bookRequests.find((item) => String(item.id) === String(record.requestId))?.status;
+  };
+
   const decide = async (
     type: "registration" | "book",
     id: number,
@@ -387,14 +394,15 @@ export default function ManagementPanel({
                   <div className="history-reevaluate">
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
+                        const currentStatus = currentStatusForDecision(record);
                         decide(
                           record.requestType,
                           Number(record.requestId),
-                          record.decision === "approved" ? "rejected" : "approved",
+                          currentStatus === "approved" ? "rejected" : "approved",
                           subjectForDecision(record),
-                        )
-                      }
+                        );
+                      }}
                     >
                       Reevaluar
                     </button>
