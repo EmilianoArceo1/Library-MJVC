@@ -8,6 +8,8 @@ type Reader = { id:string; name:string; pages:number; role:"reader"|"admin"; now
 type ForumPost = { id:number; user:string; book:string; time:string; text:string; likes:number; replies:number; color:string; photoUrl?:string|null };
 type SessionUser = { id:string; name:string; email:string; role:"reader"|"admin"; description:string; pagesRead:number; photoUrl:string|null };
 type ReaderQuestion = { id:number; body:string; user:string };
+type ReconstructedPage = { heading:string|null; paragraphs:string[]; artwork?:string|null };
+type ReconstructedBook = { version:1; source:"pdf"|"txt"; pages:ReconstructedPage[] };
 
 const initialPosts: ForumPost[] = [];
 
@@ -16,16 +18,17 @@ const reactionKey=(targetType:ReactionTargetType,targetId:string|number,emoji:st
 
 function Avatar({name,color,small=false,src=null}:{name:string;color:string;small?:boolean;src?:string|null}){return <div className={`avatar ${small?"small":""}`} style={{background:color}} aria-label={name}>{src?<img src={src} alt=""/>:name[0]}</div>}
 function Stars({rating,onSelect}:{rating:number;onSelect?:(rating:number)=>void}){return <span className={`stars ${onSelect?"interactive":""}`} aria-label={`${rating} de 5`}>{[1,2,3,4,5].map(n=>onSelect?<button type="button" key={n} className={n<=rating?"on":""} onClick={()=>onSelect(n)} aria-label={`${n} estrellas`}>★</button>:<span key={n} className={n<=Math.round(rating)?"on":""}>★</span>)}</span>}
+function BookSheet({page,pageNumber,side,zoom}:{page?:ReconstructedPage;pageNumber?:number;side:"left"|"right";zoom:number}){return <article className={`reader-sheet ${side} ${!page?"blank":""}`} style={{fontSize:`${zoom}em`}}>{page?<><div className="reader-sheet-inner">{page.artwork&&<img className="reader-artwork" src={page.artwork} alt="Ilustración recuperada del documento original"/>}{page.heading&&<h3>{page.heading}</h3>}{page.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div><span className="reader-page-number">{pageNumber}</span></>:<div className="reader-sheet-inner reader-blank-page"/>}</article>}
 
 export default function Home(){
   const [view,setView]=useState<View>("biblioteca"),[books,setBooks]=useState<Book[]>([]),[people,setPeople]=useState<Reader[]>([]),[selected,setSelected]=useState<Book|null>(null),[search,setSearch]=useState(""),[year,setYear]=useState(""),[type,setType]=useState("");
   const readBooks=books;
   const [owned,setOwned]=useState<Book|null>(null),[toast,setToast]=useState(""),[modal,setModal]=useState<"detail"|"return"|"profile"|null>(null),[posts,setPosts]=useState<ForumPost[]>(initialPosts),[draft,setDraft]=useState(""),[publishing,setPublishing]=useState(false),[postBook,setPostBook]=useState(""),[liked,setLiked]=useState<number[]>([]),[reactionCounts,setReactionCounts]=useState<Record<string,number>>({}),[reactionBusy,setReactionBusy]=useState<string[]>([]);
-  const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookUploading,setBookUploading]=useState(false);
+  const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookPackage,setBookPackage]=useState(""),[bookUploading,setBookUploading]=useState(false);
   const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false);
-  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(1),[readerTotalPages,setReaderTotalPages]=useState(0),[readerKind,setReaderKind]=useState<"pdf"|"text"|null>(null),[readerTextPages,setReaderTextPages]=useState<string[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1);
+  const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1);
   const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false),[returnQuestions,setReturnQuestions]=useState<ReaderQuestion[]>([]),[returnQuestionsLoading,setReturnQuestionsLoading]=useState(false),[returnExtraQuestions,setReturnExtraQuestions]=useState(0);
-  const pdfDocRef=useRef<any>(null),readerCanvasRef=useRef<HTMLCanvasElement|null>(null),pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null);
+  const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null);
   const [shelfPage,setShelfPage]=useState(0);
   const sortedBooks=useMemo(()=>[...books].sort((a,b)=>a.title.localeCompare(b.title,"es",{sensitivity:"base"})),[books]);
   const filtered=useMemo(()=>sortedBooks.filter(b=>(!search||`${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()))&&(!year||String(b.year)===year)&&(!type||b.type===type)),[search,year,type,sortedBooks]);
