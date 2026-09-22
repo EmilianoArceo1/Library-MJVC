@@ -371,7 +371,7 @@ export default function Home(){
       setBooks(current=>current.map(book=>book.id===owned.id?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||book.reads}:book));
       setSelected(current=>current?.id===owned.id?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||current.reads}:current);
       setCurrentUser(user=>user?{...user,pagesRead:user.pagesRead+owned.pages}:user);
-      setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(1);setReaderTotalPages(0);pdfDocRef.current=null;
+      setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);
       flash("Libro devuelto. Tu calificación y aportaciones quedaron guardadas.");
     }catch(error){
       flash(error instanceof Error?error.message:"No se pudo devolver el libro.");
@@ -382,31 +382,28 @@ export default function Home(){
   const toggleProfileReaction=async(name:string,emoji:string)=>{const active=await toggleReaction("profile",name,emoji);if(active!==null)flash(active?`Reaccionaste al perfil de ${name}`:`Quitaste tu reacción a ${name}`)};
   const handleBookFile=async(file?:File)=>{
     setDetectedPages(0);
+    setBookPackage("");
     if(!file){setFileInfo("");return}
     const lower=file.name.toLowerCase();
     if(!(lower.endsWith(".pdf")||lower.endsWith(".txt"))){setFileInfo("Solo se permiten archivos PDF o TXT.");return}
     if(file.size>25*1024*1024){setFileInfo("El archivo supera el máximo de 25 MB.");return}
-    setFileInfo("Analizando el documento y calculando sus páginas…");
+    setFileInfo("Reconstruyendo texto e imágenes para el lector…");
     try{
-      if(lower.endsWith(".pdf")||file.type==="application/pdf"){
-        const [pdfjs,workerModule]=await Promise.all([import("pdfjs-dist"),import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
-        pdfjs.GlobalWorkerOptions.workerSrc=workerModule.default;
-        const pdf=await pdfjs.getDocument({data:await file.arrayBuffer()}).promise;
-        const pages=Math.max(1,pdf.numPages);
-        setDetectedPages(pages);
-        setFileInfo(`${file.name} · ${(file.size/1024/1024).toFixed(2)} MB · ${pages} ${pages===1?"página detectada":"páginas detectadas"}`);
-      }else{
-        const text=await file.text();
-        const words=text.trim()?text.trim().split(/\s+/).length:0;
-        if(words===0){setFileInfo("El archivo TXT no contiene texto suficiente para calcular páginas.");return}
-        const pages=Math.max(1,Math.ceil(words/300));
-        setDetectedPages(pages);
-        setFileInfo(`${file.name} · ${words.toLocaleString("es-MX")} palabras · ${pages} páginas estimadas a 300 palabras por página`);
-      }
+      const reconstructed=lower.endsWith(".pdf")||file.type==="application/pdf"
+        ?await reconstructPdf(await file.arrayBuffer(),true)
+        :reconstructText(await file.text());
+      const serialized=JSON.stringify(reconstructed);
+      const packageMb=new Blob([serialized]).size/1024/1024;
+      if(packageMb>18)throw new Error("La reconstrucción es demasiado grande; prueba con un PDF más ligero.");
+      setDetectedPages(reconstructed.pages.length);
+      setBookPackage(serialized);
+      const illustrated=reconstructed.pages.filter(page=>Boolean(page.artwork)).length;
+      setFileInfo(`${file.name} · ${reconstructed.pages.length} páginas reconstruidas${illustrated?` · ${illustrated} con material visual`:""} · ${packageMb.toFixed(2)} MB`);
     }catch(error){
-      console.error("No se pudieron calcular las páginas",error);
+      console.error("No se pudo reconstruir el libro",error);
       setDetectedPages(0);
-      setFileInfo("No pudimos determinar las páginas de este archivo. Prueba con otro PDF o TXT.");
+      setBookPackage("");
+      setFileInfo(error instanceof Error?error.message:"No pudimos reconstruir este archivo.");
     }
   };
   const submitBook=async(event:FormEvent<HTMLFormElement>)=>{
@@ -416,8 +413,9 @@ export default function Home(){
     const data=new FormData(form);
     const file=data.get("file");
     if(!(file instanceof File)||file.size===0){flash("Selecciona el archivo del libro.");return}
-    if(detectedPages<1){flash("Espera a que terminemos de calcular las páginas del documento.");return}
+    if(detectedPages<1||!bookPackage){flash("Espera a que terminemos de reconstruir el documento.");return}
     data.set("pages",String(detectedPages));
+    data.set("contentPackage",bookPackage);
     setBookUploading(true);
     try{
       const response=await fetch("/api/books",{method:"POST",body:data});
@@ -434,6 +432,7 @@ export default function Home(){
       form.reset();
       setFileInfo("");
       setDetectedPages(0);
+      setBookPackage("");
       setView("biblioteca");
       flash(`“${created.title}” ya está guardado en la biblioteca.`);
     }catch(error){
