@@ -2,19 +2,29 @@ import { env } from "cloudflare:workers";
 
 let schemaReady: Promise<void> | null = null;
 
-async function hasUsersColumn(name: string): Promise<boolean> {
-  const result = await env.DB.prepare("PRAGMA table_info(users)").all<{ name: string }>();
+async function hasColumn(table: "users" | "books", name: string): Promise<boolean> {
+  const result = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
   return result.results.some((column) => column.name === name);
 }
 
 async function buildWorkflowSchema() {
-  if (!(await hasUsersColumn("approval_status"))) {
+  if (!(await hasColumn("users", "approval_status"))) {
     try {
       await env.DB.prepare(
         "ALTER TABLE users ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'approved'",
       ).run();
     } catch (error) {
-      if (!(await hasUsersColumn("approval_status"))) throw error;
+      if (!(await hasColumn("users", "approval_status"))) throw error;
+    }
+  }
+
+  if (!(await hasColumn("books", "publication_status"))) {
+    try {
+      await env.DB.prepare(
+        "ALTER TABLE books ADD COLUMN publication_status TEXT NOT NULL DEFAULT 'published'",
+      ).run();
+    } catch (error) {
+      if (!(await hasColumn("books", "publication_status"))) throw error;
     }
   }
 
