@@ -9,6 +9,13 @@ export const users = sqliteTable("users", {
   pagesRead: integer("pages_read").notNull().default(0),
 });
 
+export const userPreferences = sqliteTable("user_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  theme: text("theme", { enum: ["light", "dark"] }).notNull().default("light"),
+});
+
 export const authCredentials = sqliteTable("auth_credentials", {
   userId: text("user_id")
     .primaryKey()
