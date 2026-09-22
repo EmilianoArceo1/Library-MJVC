@@ -301,6 +301,13 @@ export async function PATCH(request: Request) {
       createdBookId = created.id;
     }
 
+    if (createdBookId) {
+      await db
+        .update(books)
+        .set({ publicationStatus: decision === "approved" ? "published" : "hidden" })
+        .where(eq(books.id, createdBookId));
+    }
+
     await env.DB.prepare(
       `UPDATE book_upload_requests
        SET status = ?, created_book_id = ?,
