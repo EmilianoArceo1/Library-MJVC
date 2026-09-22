@@ -248,7 +248,7 @@
   text-wrap:pretty;
   hyphens:auto;
 }
-.reader-sheet p:first-of-type::first-letter{
+.reader-sheet.has-heading p:first-of-type::first-letter{
   float:left;
   margin:.05em .1em 0 0;
   color:#8b4f2b;
