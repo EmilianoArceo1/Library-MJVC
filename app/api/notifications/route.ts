@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     }
 
     await ensureWorkflowSchema();
-    await env.DB.prepare(
+    const result = await env.DB.prepare(
       `SELECT
         n.id,
         n.title,
@@ -142,7 +142,7 @@ export async function POST(request: Request) {
 
     await ensureWorkflowSchema();
     const now = Date.now();
-    const result = await env.DB.prepare(
+    await env.DB.prepare(
       `INSERT INTO notifications
         (user_id, title, body, kind, created_by_id, created_by_name, created_at)
        SELECT id, ?, ?, 'broadcast', ?, ?, ?
