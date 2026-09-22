@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { posts, users } from "../../../db/schema";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getSessionUser } from "../../auth-server";
 
 type StoredForumBody = {
   text: string;
@@ -44,18 +44,6 @@ function relativeTime(value: Date | string | number): string {
     day: "numeric",
     month: "short",
   });
-}
-
-async function getForumIdentity() {
-  const authenticated = await getChatGPTUser();
-
-  return {
-    id: authenticated?.userId ?? "demo-amelia",
-    name:
-      authenticated?.fullName ??
-      authenticated?.displayName ??
-      "Amelia",
-  };
 }
 
 function errorMessage(error: unknown): string {
@@ -111,6 +99,14 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const identity = await getSessionUser(request);
+    if (!identity) {
+      return Response.json(
+        { error: "Inicia sesión para publicar en el foro." },
+        { status: 401 },
+      );
+    }
+
     const payload = (await request.json()) as {
       text?: string;
       book?: string;
@@ -141,19 +137,6 @@ export async function POST(request: Request) {
     }
 
     const db = getDb();
-    const identity = await getForumIdentity();
-
-    await db
-      .insert(users)
-      .values({
-        id: identity.id,
-        name: identity.name,
-      })
-      .onConflictDoUpdate({
-        target: users.id,
-        set: { name: identity.name },
-      });
-
     const createdAt = new Date();
     const [created] = await db
       .insert(posts)
