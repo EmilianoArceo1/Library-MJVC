@@ -14,6 +14,7 @@ export async function GET() {
           name: users.name,
           pagesRead: users.pagesRead,
           role: users.role,
+          photoKey: users.photoKey,
         })
         .from(users)
         .orderBy(desc(users.pagesRead), users.name),
@@ -51,6 +52,9 @@ export async function GET() {
         pages: user.pagesRead,
         role: user.role,
         now: currentReading.get(user.id) ?? null,
+        photoUrl: user.photoKey
+          ? `/api/profile/photo?userId=${encodeURIComponent(user.id)}&v=${encodeURIComponent(user.photoKey)}`
+          : null,
       })),
     });
   } catch (error) {
