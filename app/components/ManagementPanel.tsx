@@ -401,6 +401,10 @@ export default function ManagementPanel({
         <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>
           Historial
         </button>
+        <button className={tab === "rights" ? "active" : ""} onClick={() => setTab("rights")}>
+          Derechos
+          <span>{rightsBooks.filter((book) => book.rightsStatus === "review").length + copyrightReports.filter((report) => report.status === "pending" || report.status === "reviewing").length}</span>
+        </button>
         {isAdmin && (
           <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
             Usuarios
