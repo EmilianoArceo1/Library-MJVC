@@ -58,6 +58,12 @@ export async function PATCH(request: Request) {
         { status: 400 },
       );
     }
+    if (status === "rights_reserved" && !sourceUrl) {
+      return Response.json(
+        { error: "Para una obra con derechos reservados, añade el enlace legal a la fuente donde debe leerse." },
+        { status: 400 },
+      );
+    }
     if (
       (status === "creative_commons" ||
         status === "official_source" ||
