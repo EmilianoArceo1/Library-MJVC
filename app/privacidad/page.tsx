@@ -203,6 +203,7 @@ export default function PrivacyPage() {
 
         <nav className="legal-links">
           <Link href="/terminos">Términos de uso</Link>
+          <Link href="/derechos-de-autor">Derechos de autor</Link>
           <Link href="/">Biblioteca</Link>
         </nav>
       </article>
