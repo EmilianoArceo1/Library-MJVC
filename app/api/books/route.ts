@@ -204,7 +204,7 @@ export async function POST(request: Request) {
     await bucket.put(uploadedKey, contentPackage, {
       httpMetadata: {
         contentType: "application/vnd.mjvc.book+json; charset=utf-8",
-        cacheControl: "private, max-age=3600",
+        cacheControl: "private, no-store, max-age=0",
       },
       customMetadata: {
         originalName: value.name,
