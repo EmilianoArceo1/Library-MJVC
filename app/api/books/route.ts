@@ -3,6 +3,8 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { answers, books, loans, posts, questions } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
+import { deleteRightsEvidence, isRightsStatus, readRightsForm, rightsCanPublish, storeRightsEvidence } from "../../rights-server";
+import { ensureWorkflowSchema } from "../../workflow-server";
 
 const MAX_BOOK_BYTES = 25 * 1024 * 1024;
 const MAX_PACKAGE_BYTES = 18 * 1024 * 1024;
@@ -34,6 +36,7 @@ function parsePositiveInteger(value: string, field: string): number {
 
 export async function POST(request: Request) {
   let uploadedKey: string | null = null;
+  let rightsEvidenceKey: string | null = null;
 
   try {
     const session = await getSessionUser(request);
@@ -54,6 +57,7 @@ export async function POST(request: Request) {
       );
     }
 
+    await ensureWorkflowSchema();
     const formData = await request.formData();
     const title = readText(formData, "title");
     const author = readText(formData, "author");
@@ -64,6 +68,7 @@ export async function POST(request: Request) {
     const copies = parsePositiveInteger(readText(formData, "copies"), "Los ejemplares");
     const value = formData.get("file");
     const contentPackage = readText(formData, "contentPackage");
+    const rights = readRightsForm(formData);
 
     if (title.length < 1 || title.length > 180) {
       return Response.json(
@@ -191,13 +196,15 @@ export async function POST(request: Request) {
       );
     }
 
+    rightsEvidenceKey = await storeRightsEvidence({ formData, uploadedBy: session.id, subject: "book" });
+
     uploadedKey = `books/${crypto.randomUUID()}-${safeTitle}.mjvc.json`;
     const bucket = runtimeEnv().BOOK_FILES;
 
     await bucket.put(uploadedKey, contentPackage, {
       httpMetadata: {
         contentType: "application/vnd.mjvc.book+json; charset=utf-8",
-        cacheControl: "private, max-age=3600",
+        cacheControl: "private, no-store, max-age=0",
       },
       customMetadata: {
         originalName: value.name,
@@ -222,6 +229,15 @@ export async function POST(request: Request) {
         availableCopies: copies,
         fileKey: uploadedKey,
         rating: 0,
+        publicationStatus: rightsCanPublish(rights.status) ? "published" : "hidden",
+        rightsStatus: rights.status,
+        rightsHolder: rights.holder,
+        rightsSourceUrl: rights.sourceUrl,
+        rightsPermissionBy: rights.permissionBy,
+        rightsNotes: rights.notes,
+        rightsEvidenceKey,
+        rightsVerifiedAt: rightsCanPublish(rights.status) ? Date.now() : null,
+        rightsVerifiedBy: rightsCanPublish(rights.status) ? session.name : null,
       })
       .returning({
         id: books.id,
@@ -234,6 +250,10 @@ export async function POST(request: Request) {
         totalCopies: books.totalCopies,
         availableCopies: books.availableCopies,
         rating: books.rating,
+        publicationStatus: books.publicationStatus,
+        rightsStatus: books.rightsStatus,
+        rightsHolder: books.rightsHolder,
+        rightsSourceUrl: books.rightsSourceUrl,
       });
 
     return Response.json(
@@ -249,6 +269,10 @@ export async function POST(request: Request) {
           copies: created.totalCopies,
           available: created.availableCopies,
           rating: created.rating,
+          publicationStatus: created.publicationStatus,
+          rightsStatus: created.rightsStatus,
+          rightsHolder: created.rightsHolder,
+          rightsSourceUrl: created.rightsSourceUrl,
           readers: [],
         },
       },
@@ -258,6 +282,7 @@ export async function POST(request: Request) {
     if (uploadedKey) {
       await runtimeEnv().BOOK_FILES.delete(uploadedKey).catch(() => undefined);
     }
+    await deleteRightsEvidence(rightsEvidenceKey);
 
     const message =
       error instanceof Error ? error.message : "No se pudo guardar el libro.";
@@ -268,6 +293,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    await ensureWorkflowSchema();
     const session = await getSessionUser(request);
     if (!session || session.role !== "admin" || !session.emailVerified || session.approvalStatus !== "approved") {
       return Response.json(
@@ -284,6 +310,11 @@ export async function PATCH(request: Request) {
       type?: string;
       synopsis?: string;
       copies?: number;
+      rightsStatus?: string;
+      rightsHolder?: string;
+      rightsSourceUrl?: string;
+      rightsPermissionBy?: string;
+      rightsNotes?: string;
     };
 
     const id = Number(payload.id);
@@ -293,6 +324,11 @@ export async function PATCH(request: Request) {
     const synopsis = payload.synopsis?.trim() ?? "";
     const year = Number(payload.year);
     const copies = Number(payload.copies);
+    const rightsStatusInput = payload.rightsStatus?.trim();
+    const rightsHolderInput = payload.rightsHolder?.trim().slice(0, 180);
+    const rightsSourceUrlInput = payload.rightsSourceUrl?.trim().slice(0, 1000);
+    const rightsPermissionByInput = payload.rightsPermissionBy?.trim().slice(0, 180);
+    const rightsNotesInput = payload.rightsNotes?.trim().slice(0, 2000);
 
     if (!Number.isInteger(id) || id < 1) {
       return Response.json({ error: "Libro inválido." }, { status: 400 });
@@ -309,6 +345,17 @@ export async function PATCH(request: Request) {
     if (!Number.isInteger(copies) || copies < 1 || copies > 1000) {
       return Response.json({ error: "Los ejemplares no son válidos." }, { status: 400 });
     }
+    if (rightsStatusInput !== undefined && !isRightsStatus(rightsStatusInput)) {
+      return Response.json({ error: "Selecciona una situación de derechos válida." }, { status: 400 });
+    }
+    if (rightsSourceUrlInput) {
+      try {
+        const parsed = new URL(rightsSourceUrlInput);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error();
+      } catch {
+        return Response.json({ error: "La URL de derechos no es válida." }, { status: 400 });
+      }
+    }
 
     const db = getDb();
     const [current] = await db
@@ -319,6 +366,32 @@ export async function PATCH(request: Request) {
 
     if (!current) {
       return Response.json({ error: "Ese libro ya no existe." }, { status: 404 });
+    }
+    const rightsStatus = rightsStatusInput && isRightsStatus(rightsStatusInput)
+      ? rightsStatusInput
+      : current.rightsStatus;
+    const rightsHolder = rightsHolderInput ?? current.rightsHolder;
+    const rightsSourceUrl = rightsSourceUrlInput ?? current.rightsSourceUrl;
+    const rightsPermissionBy = rightsPermissionByInput ?? current.rightsPermissionBy;
+    const rightsNotes = rightsNotesInput ?? current.rightsNotes;
+
+    if (rightsStatus === "permission" && (!rightsHolder || !rightsPermissionBy)) {
+      return Response.json(
+        { error: "Para usar permiso del titular, indica titular y quién concedió el permiso." },
+        { status: 400 },
+      );
+    }
+    if (
+      (rightsStatus === "creative_commons" ||
+        rightsStatus === "official_source" ||
+        rightsStatus === "public_domain") &&
+      !rightsSourceUrl &&
+      !rightsNotes
+    ) {
+      return Response.json(
+        { error: "Añade una fuente o nota que permita comprobar los derechos." },
+        { status: 400 },
+      );
     }
 
     const borrowed = Math.max(0, current.totalCopies - current.availableCopies);
@@ -339,6 +412,20 @@ export async function PATCH(request: Request) {
         synopsis,
         totalCopies: copies,
         availableCopies: copies - borrowed,
+        rightsStatus,
+        rightsHolder,
+        rightsSourceUrl,
+        rightsPermissionBy,
+        rightsNotes,
+        publicationStatus: rightsStatusInput !== undefined
+          ? (rightsCanPublish(rightsStatus) ? "published" : "hidden")
+          : current.publicationStatus,
+        rightsVerifiedAt: rightsStatusInput !== undefined
+          ? (rightsCanPublish(rightsStatus) ? Date.now() : null)
+          : current.rightsVerifiedAt,
+        rightsVerifiedBy: rightsStatusInput !== undefined
+          ? (rightsCanPublish(rightsStatus) ? session.name : null)
+          : current.rightsVerifiedBy,
       })
       .where(eq(books.id, id))
       .returning();
@@ -355,6 +442,13 @@ export async function PATCH(request: Request) {
         copies: updated.totalCopies,
         available: updated.availableCopies,
         rating: updated.rating,
+        publicationStatus: updated.publicationStatus,
+        rightsStatus: updated.rightsStatus,
+        rightsHolder: updated.rightsHolder,
+        rightsSourceUrl: updated.rightsSourceUrl,
+        rightsPermissionBy: updated.rightsPermissionBy,
+        rightsNotes: updated.rightsNotes,
+        rightsEvidenceAvailable: Boolean(updated.rightsEvidenceKey),
         readers: [],
       },
     });
@@ -367,6 +461,7 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    await ensureWorkflowSchema();
     const session = await getSessionUser(request);
     if (!session || session.role !== "admin" || !session.emailVerified || session.approvalStatus !== "approved") {
       return Response.json(
@@ -386,6 +481,7 @@ export async function DELETE(request: Request) {
       .select({
         id: books.id,
         fileKey: books.fileKey,
+        rightsEvidenceKey: books.rightsEvidenceKey,
       })
       .from(books)
       .where(eq(books.id, id))
@@ -428,6 +524,7 @@ export async function DELETE(request: Request) {
     if (book.fileKey) {
       await runtimeEnv().BOOK_FILES.delete(book.fileKey).catch(() => undefined);
     }
+    await deleteRightsEvidence(book.rightsEvidenceKey);
 
     return Response.json({ ok: true });
   } catch (error) {

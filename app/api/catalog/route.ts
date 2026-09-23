@@ -1,8 +1,9 @@
-import { eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { books, loans, users } from "../../../db/schema";
 import { computeAllUserPagesRead, computeUniqueCompletedReadCounts, persistUserPagesRead } from "../../reading-stats";
 import { ensureWorkflowSchema } from "../../workflow-server";
+import { privateNoIndexHeaders } from "../../rights-server";
 
 export async function GET() {
   try {
@@ -11,7 +12,7 @@ export async function GET() {
 
     const [bookRows, userRows, activeLoanRows, pagesReadByUser, readCounts] =
       await Promise.all([
-        db.select().from(books).where(eq(books.publicationStatus, "published")).orderBy(books.title),
+        db.select().from(books).where(and(eq(books.publicationStatus, "published"), ne(books.rightsStatus, "review"))).orderBy(books.title),
         db
           .select({
             id: users.id,
@@ -49,6 +50,7 @@ export async function GET() {
         ),
     );
 
+    const headers = privateNoIndexHeaders("application/json; charset=utf-8");
     return Response.json({
       books: bookRows.map((book) => ({
         id: book.id,
@@ -62,6 +64,9 @@ export async function GET() {
         available: book.availableCopies,
         copies: book.totalCopies,
         reads: readCounts.get(book.id) ?? 0,
+        rightsStatus: book.rightsStatus,
+        rightsHolder: book.rightsHolder,
+        rightsSourceUrl: book.rightsSourceUrl,
         readers: [],
       })),
       people: userRows
@@ -81,7 +86,7 @@ export async function GET() {
             right.pages - left.pages ||
             left.name.localeCompare(right.name, "es", { sensitivity: "base" }),
         ),
-    });
+    }, { headers });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "No se pudo cargar la biblioteca.";

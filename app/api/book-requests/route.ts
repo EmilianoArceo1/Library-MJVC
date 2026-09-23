@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getSessionUser } from "../../auth-server";
 import { createNotification, ensureWorkflowSchema } from "../../workflow-server";
+import { deleteRightsEvidence, readRightsForm, storeRightsEvidence } from "../../rights-server";
 
 const MAX_BOOK_BYTES = 25 * 1024 * 1024;
 const MAX_PACKAGE_BYTES = 18 * 1024 * 1024;
@@ -30,6 +31,7 @@ function parsePositiveInteger(value: string, field: string): number {
 
 export async function POST(request: Request) {
   let uploadedKey: string | null = null;
+  let rightsEvidenceKey: string | null = null;
 
   try {
     const session = await getSessionUser(request);
@@ -63,6 +65,7 @@ export async function POST(request: Request) {
     );
     const file = formData.get("file");
     const contentPackage = readText(formData, "contentPackage");
+    const rights = readRightsForm(formData);
 
     if (!title || title.length > 180 || !author || author.length > 140) {
       return Response.json(
@@ -147,6 +150,8 @@ export async function POST(request: Request) {
       );
     }
 
+    rightsEvidenceKey = await storeRightsEvidence({ formData, uploadedBy: session.id, subject: "request" });
+
     const safeTitle =
       title
         .normalize("NFD")
@@ -160,7 +165,7 @@ export async function POST(request: Request) {
     await runtimeEnv().BOOK_FILES.put(uploadedKey, contentPackage, {
       httpMetadata: {
         contentType: "application/vnd.mjvc.book+json; charset=utf-8",
-        cacheControl: "private, max-age=3600",
+        cacheControl: "private, no-store, max-age=0",
       },
       customMetadata: {
         originalName: file.name,
@@ -176,8 +181,9 @@ export async function POST(request: Request) {
     const result = await env.DB.prepare(
       `INSERT INTO book_upload_requests
         (user_id, requester_name, requester_email, title, author, year, pages,
-         synopsis, type, copies, file_key, original_name, status, requested_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+         synopsis, type, copies, file_key, original_name, status, requested_at, updated_at,
+         rights_status, rights_holder, rights_source_url, rights_permission_by, rights_notes, rights_evidence_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING id`,
     )
       .bind(
@@ -195,6 +201,12 @@ export async function POST(request: Request) {
         file.name,
         now,
         now,
+        rights.status,
+        rights.holder,
+        rights.sourceUrl,
+        rights.permissionBy,
+        rights.notes,
+        rightsEvidenceKey,
       )
       .first<{ id: number }>();
 
@@ -218,6 +230,7 @@ export async function POST(request: Request) {
     if (uploadedKey) {
       await runtimeEnv().BOOK_FILES.delete(uploadedKey).catch(() => undefined);
     }
+    await deleteRightsEvidence(rightsEvidenceKey);
     const message =
       error instanceof Error ? error.message : "No se pudo enviar la propuesta.";
     return Response.json({ error: message }, { status: 500 });

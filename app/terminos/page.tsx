@@ -3,6 +3,7 @@ import Link from "next/link";
 import BookLogo from "../components/BookLogo";
 
 export const metadata: Metadata = {
+  robots: { index: true, follow: true },
   title: "Términos de uso | Biblioteca Jornadas",
   description:
     "Términos de uso de la Biblioteca virtual de Jornadas de Vida Cristiana Mérida.",
@@ -162,6 +163,7 @@ export default function TermsPage() {
 
         <nav className="legal-links">
           <Link href="/privacidad">Política de privacidad</Link>
+          <Link href="/derechos-de-autor">Derechos de autor</Link>
           <Link href="/">Biblioteca</Link>
         </nav>
       </article>
