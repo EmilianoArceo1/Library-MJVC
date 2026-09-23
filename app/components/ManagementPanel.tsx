@@ -549,6 +549,116 @@ export default function ManagementPanel({
             )}
           </div>
         </div>
+      ) : tab === "rights" ? (
+        <div className="rights-management-layout">
+          <section className="rights-management-section">
+            <div className="management-column-title">
+              <p className="eyebrow">CONTROL DE DERECHOS</p>
+              <h2>Materiales de la biblioteca</h2>
+            </div>
+            <div className="rights-books-grid">
+              {rightsBooks.length === 0 ? (
+                <p className="empty-note">No hay libros registrados.</p>
+              ) : (
+                rightsBooks.map((book) => (
+                  <article className="rights-book-card" key={book.id}>
+                    <div className="request-card-head">
+                      <div>
+                        <b>{book.title}</b>
+                        <span>{book.author} · {book.year}</span>
+                      </div>
+                      <span className={`request-status ${book.publicationStatus === "published" ? "approved" : "pending"}`}>
+                        {book.publicationStatus === "published" ? "Publicado" : "Oculto"}
+                      </span>
+                    </div>
+                    <div className="rights-summary">
+                      <b>{rightsLabel(book.rightsStatus)}</b>
+                      {book.rightsHolder && <span>Titular: {book.rightsHolder}</span>}
+                      {book.rightsVerifiedBy && (
+                        <span>
+                          Revisado por {book.rightsVerifiedBy}
+                          {book.rightsVerifiedAt ? ` · ${new Date(book.rightsVerifiedAt).toLocaleDateString("es-MX")}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    {book.rightsSourceUrl && (
+                      <a href={book.rightsSourceUrl} target="_blank" rel="noreferrer">
+                        Ver fuente o licencia ↗
+                      </a>
+                    )}
+                    {book.rightsNotes && <p>{book.rightsNotes}</p>}
+                    <div className="request-actions">
+                      {book.rightsEvidenceAvailable && (
+                        <a
+                          className="secondary evidence-link"
+                          href={`/api/rights/evidence?bookId=${book.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Ver evidencia
+                        </a>
+                      )}
+                      {isAdmin && (
+                        <button className="secondary" type="button" onClick={() => setEditingRights(book)}>
+                          Revisar derechos
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="rights-management-section">
+            <div className="management-column-title">
+              <p className="eyebrow">RECLAMACIONES</p>
+              <h2>Posibles problemas de derechos de autor</h2>
+            </div>
+            <div className="copyright-report-list">
+              {copyrightReports.length === 0 ? (
+                <p className="empty-note">No hay reclamaciones registradas.</p>
+              ) : (
+                copyrightReports.map((report) => (
+                  <article className="copyright-report-card" key={report.id}>
+                    <div className="request-card-head">
+                      <div>
+                        <b>{report.bookTitle || `Libro #${report.bookId}`}</b>
+                        <span>{report.bookAuthor || "Autor no disponible"}</span>
+                      </div>
+                      <span className={`copyright-status ${report.status}`}>{report.status}</span>
+                    </div>
+                    <div className="copyright-report-meta">
+                      <span>Reclamante: <b>{report.claimantName}</b> · {report.claimantEmail}</span>
+                      <span>Relación: {report.relationship}</span>
+                      <span>Enviado por: {report.reporterName} · {report.reporterEmail}</span>
+                      <span>{new Date(report.createdAt).toLocaleString("es-MX")}</span>
+                    </div>
+                    <p>{report.details}</p>
+                    {report.evidenceUrl && (
+                      <a href={report.evidenceUrl} target="_blank" rel="noreferrer">Ver evidencia externa ↗</a>
+                    )}
+                    {report.resolutionNote && (
+                      <div className="copyright-resolution">
+                        <b>Última resolución</b>
+                        <span>{report.resolutionNote}</span>
+                        {report.resolvedBy && <small>Por {report.resolvedBy}</small>}
+                      </div>
+                    )}
+                    {isAdmin && (
+                      <div className="request-actions copyright-actions">
+                        <button className="secondary danger" type="button" disabled={Boolean(busyKey)} onClick={() => actOnCopyrightReport(report, "hide")}>Ocultar libro</button>
+                        <button className="secondary" type="button" disabled={Boolean(busyKey)} onClick={() => actOnCopyrightReport(report, "resolve")}>Marcar resuelto</button>
+                        <button className="secondary" type="button" disabled={Boolean(busyKey)} onClick={() => actOnCopyrightReport(report, "restore")}>Restaurar libro</button>
+                        <button className="secondary" type="button" disabled={Boolean(busyKey)} onClick={() => actOnCopyrightReport(report, "dismiss")}>Descartar reporte</button>
+                      </div>
+                    )}
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+        </div>
       ) : tab === "users" && isAdmin ? (
         <div className="users-admin-list">
           {users.map((user) => (
