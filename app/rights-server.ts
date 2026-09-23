@@ -49,16 +49,16 @@ export function readRightsForm(formData: FormData): RightsForm {
     }
   }
 
-  if (status === "permission" && (!holder || !permissionBy)) {
+  if (statusRaw === "permission" && (!holder || !permissionBy)) {
     throw new Error(
       "Para publicar con permiso del titular, indica al titular y quién concedió el permiso.",
     );
   }
 
   if (
-    (status === "creative_commons" ||
-      status === "official_source" ||
-      status === "public_domain") &&
+    (statusRaw === "creative_commons" ||
+      statusRaw === "official_source" ||
+      statusRaw === "public_domain") &&
     !sourceUrl &&
     !notes
   ) {
@@ -67,7 +67,7 @@ export function readRightsForm(formData: FormData): RightsForm {
     );
   }
 
-  return { status, holder, sourceUrl, permissionBy, notes };
+  return { status: statusRaw, holder, sourceUrl, permissionBy, notes };
 }
 
 export function rightsCanPublish(status: RightsStatus): boolean {
