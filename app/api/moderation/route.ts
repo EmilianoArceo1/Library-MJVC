@@ -303,6 +303,16 @@ export async function PATCH(request: Request) {
         { status: 409 },
       );
     }
+    if (
+      decision === "approved" &&
+      requestRow.rightsStatus !== "rights_reserved" &&
+      !requestRow.fileKey
+    ) {
+      return Response.json(
+        { error: "Esta propuesta no tiene archivo interno; solo puede aprobarse como obra de derechos reservados con lectura externa." },
+        { status: 409 },
+      );
+    }
 
     let createdBookId = requestRow.createdBookId;
     const db = getDb();
