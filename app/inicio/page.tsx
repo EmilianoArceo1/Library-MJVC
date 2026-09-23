@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import BookLogo from "../components/BookLogo";
 
 export const metadata: Metadata = {
   title: "Biblioteca Jornadas",
@@ -15,7 +16,7 @@ export default function PublicHomepage() {
     <main className="oauth-homepage">
       <header className="oauth-homepage-header">
         <div className="oauth-homepage-brand">
-          <span className="oauth-homepage-mark">B</span>
+          <BookLogo className="oauth-homepage-mark"/>
           <div>
             <strong>Biblioteca Jornadas</strong>
             <span>Jornadas de Vida Cristiana Mérida</span>
