@@ -266,6 +266,7 @@ export async function DELETE(request: Request) {
     }
 
     const cleanup = [
+      ["DELETE FROM email_verification_tokens WHERE user_id = ?", id],
       ["DELETE FROM notification_reads WHERE user_id = ?", id],
       ["DELETE FROM notifications WHERE user_id = ?", id],
       ["DELETE FROM user_preferences WHERE user_id = ?", id],
