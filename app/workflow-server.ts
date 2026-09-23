@@ -28,6 +28,24 @@ async function buildWorkflowSchema() {
     }
   }
 
+  const hadEmailVerificationColumn = await hasColumn("users", "email_verified_at");
+  if (!hadEmailVerificationColumn) {
+    try {
+      await env.DB.prepare(
+        "ALTER TABLE users ADD COLUMN email_verified_at INTEGER",
+      ).run();
+    } catch (error) {
+      if (!(await hasColumn("users", "email_verified_at"))) throw error;
+    }
+
+    // Existing accounts predate email verification, so preserve their access.
+    await env.DB.prepare(
+      "UPDATE users SET email_verified_at = ? WHERE email_verified_at IS NULL",
+    )
+      .bind(Date.now())
+      .run();
+  }
+
   const statements = [
     `CREATE TABLE IF NOT EXISTS account_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -87,10 +105,18 @@ async function buildWorkflowSchema() {
       read_at INTEGER NOT NULL,
       PRIMARY KEY (notification_id, user_id)
     )`,
+    `CREATE TABLE IF NOT EXISTS email_verification_tokens (
+      token_hash TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      used_at INTEGER
+    )`,
     "CREATE INDEX IF NOT EXISTS idx_account_requests_status ON account_requests(status, requested_at)",
     "CREATE INDEX IF NOT EXISTS idx_book_requests_status ON book_upload_requests(status, requested_at)",
     "CREATE INDEX IF NOT EXISTS idx_request_decisions_subject ON request_decisions(request_type, request_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_email_verification_user ON email_verification_tokens(user_id, created_at)",
   ];
 
   for (const sql of statements) {
