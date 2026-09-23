@@ -222,9 +222,9 @@ export async function PATCH(request: Request) {
         .run();
       status = "reviewing";
     } else if (action === "restore") {
-      if (row.rightsStatus === "review") {
+      if (row.rightsStatus === "review" || row.rightsStatus === "rights_reserved") {
         return Response.json(
-          { error: "No puedes restaurar un libro con derechos todavía por revisar." },
+          { error: row.rightsStatus === "rights_reserved" ? "No puedes restaurar una obra con derechos reservados sin registrar antes una autorización válida." : "No puedes restaurar un libro con derechos todavía por revisar." },
           { status: 409 },
         );
       }
