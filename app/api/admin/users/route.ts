@@ -32,6 +32,7 @@ export async function GET(request: Request) {
         u.description,
         u.role,
         u.approval_status AS approvalStatus,
+        CASE WHEN u.email_verified_at IS NULL THEN 0 ELSE 1 END AS emailVerified,
         u.pages_read AS pagesRead,
         a.email
        FROM users u
@@ -129,6 +130,7 @@ export async function PATCH(request: Request) {
       `SELECT
         u.id, u.name, u.description, u.role,
         u.approval_status AS approvalStatus,
+        CASE WHEN u.email_verified_at IS NULL THEN 0 ELSE 1 END AS emailVerified,
         u.pages_read AS pagesRead, a.email
        FROM users u
        LEFT JOIN auth_credentials a ON a.user_id = u.id
