@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
-import { getSessionUser } from "../../auth-server";
-import { ensureWorkflowSchema } from "../../workflow-server";
+import { getSessionUser } from "../../../auth-server";
+import { ensureWorkflowSchema } from "../../../workflow-server";
 
 async function requireAdmin(request: Request) {
   const session = await getSessionUser(request);
