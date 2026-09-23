@@ -3,6 +3,8 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { answers, books, loans, posts, questions } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
+import { deleteRightsEvidence, readRightsForm, rightsCanPublish, storeRightsEvidence } from "../../rights-server";
+import { ensureWorkflowSchema } from "../../workflow-server";
 
 const MAX_BOOK_BYTES = 25 * 1024 * 1024;
 const MAX_PACKAGE_BYTES = 18 * 1024 * 1024;
@@ -34,6 +36,7 @@ function parsePositiveInteger(value: string, field: string): number {
 
 export async function POST(request: Request) {
   let uploadedKey: string | null = null;
+  let rightsEvidenceKey: string | null = null;
 
   try {
     const session = await getSessionUser(request);
@@ -54,6 +57,7 @@ export async function POST(request: Request) {
       );
     }
 
+    await ensureWorkflowSchema();
     const formData = await request.formData();
     const title = readText(formData, "title");
     const author = readText(formData, "author");
@@ -64,6 +68,7 @@ export async function POST(request: Request) {
     const copies = parsePositiveInteger(readText(formData, "copies"), "Los ejemplares");
     const value = formData.get("file");
     const contentPackage = readText(formData, "contentPackage");
+    const rights = readRightsForm(formData);
 
     if (title.length < 1 || title.length > 180) {
       return Response.json(
@@ -137,6 +142,8 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
+    rightsEvidenceKey = await storeRightsEvidence({ formData, uploadedBy: session.id, subject: "book" });
 
     const safeTitle = title
       .normalize("NFD")
@@ -222,6 +229,15 @@ export async function POST(request: Request) {
         availableCopies: copies,
         fileKey: uploadedKey,
         rating: 0,
+        publicationStatus: rightsCanPublish(rights.status) ? "published" : "hidden",
+        rightsStatus: rights.status,
+        rightsHolder: rights.holder,
+        rightsSourceUrl: rights.sourceUrl,
+        rightsPermissionBy: rights.permissionBy,
+        rightsNotes: rights.notes,
+        rightsEvidenceKey,
+        rightsVerifiedAt: rightsCanPublish(rights.status) ? Date.now() : null,
+        rightsVerifiedBy: rightsCanPublish(rights.status) ? session.name : null,
       })
       .returning({
         id: books.id,
@@ -234,6 +250,10 @@ export async function POST(request: Request) {
         totalCopies: books.totalCopies,
         availableCopies: books.availableCopies,
         rating: books.rating,
+        publicationStatus: books.publicationStatus,
+        rightsStatus: books.rightsStatus,
+        rightsHolder: books.rightsHolder,
+        rightsSourceUrl: books.rightsSourceUrl,
       });
 
     return Response.json(
@@ -249,6 +269,10 @@ export async function POST(request: Request) {
           copies: created.totalCopies,
           available: created.availableCopies,
           rating: created.rating,
+          publicationStatus: created.publicationStatus,
+          rightsStatus: created.rightsStatus,
+          rightsHolder: created.rightsHolder,
+          rightsSourceUrl: created.rightsSourceUrl,
           readers: [],
         },
       },
@@ -258,6 +282,7 @@ export async function POST(request: Request) {
     if (uploadedKey) {
       await runtimeEnv().BOOK_FILES.delete(uploadedKey).catch(() => undefined);
     }
+    await deleteRightsEvidence(rightsEvidenceKey);
 
     const message =
       error instanceof Error ? error.message : "No se pudo guardar el libro.";
