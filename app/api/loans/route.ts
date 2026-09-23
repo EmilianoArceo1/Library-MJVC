@@ -3,6 +3,8 @@ import { getDb } from "../../../db";
 import { answers, books, loans, questions } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
 import { countUniqueCompletedReads, recordReadingProgress, syncUserPagesRead } from "../../reading-stats";
+import { ensureWorkflowSchema } from "../../workflow-server";
+import { privateNoIndexHeaders } from "../../rights-server";
 
 function bookDto(row: {
   id: number;
@@ -77,6 +79,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    await ensureWorkflowSchema();
     const session = await getSessionUser(request);
     if (!session) {
       return Response.json({ error: "Inicia sesión para tomar un libro." }, { status: 401 });
@@ -116,6 +119,13 @@ export async function POST(request: Request) {
 
     if (!book) {
       return Response.json({ error: "Ese libro ya no existe." }, { status: 404 });
+    }
+
+    if (book.publicationStatus !== "published" || book.rightsStatus === "review") {
+      return Response.json(
+        { error: "Este libro está oculto mientras se revisa su situación de derechos." },
+        { status: 403, headers: privateNoIndexHeaders("application/json; charset=utf-8") },
+      );
     }
 
     if (book.availableCopies < 1) {
