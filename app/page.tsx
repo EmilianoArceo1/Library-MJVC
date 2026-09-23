@@ -487,8 +487,8 @@ export default function Home(){
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.error||"No se pudo devolver el libro");
       const returnedId=owned.id;
-      setBooks(current=>current.map(book=>book.id===returnedId?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||book.rating,reads:Number(payload.reads)??book.reads}:book));
-      setSelected(current=>current?.id===returnedId?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||current.rating,reads:Number(payload.reads)??current.reads}:current);
+      setBooks(current=>current.map(book=>book.id===returnedId?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||book.rating,reads:Number.isFinite(Number(payload.reads))?Number(payload.reads):book.reads}:book));
+      setSelected(current=>current?.id===returnedId?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||current.rating,reads:Number.isFinite(Number(payload.reads))?Number(payload.reads):current.reads}:current);
       syncLocalPagesRead(payload.pagesRead);
       setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);setReaderClosing(false);setReaderReturnVisible(false);setReaderAnimating(false);setReaderPendingPage(null);
       flash("Libro devuelto sin terminar. Esta lectura no sumó páginas.");
@@ -801,7 +801,7 @@ export default function Home(){
     if(readerFinishTimerRef.current!==null)window.clearTimeout(readerFinishTimerRef.current);
     readerFinishTimerRef.current=window.setTimeout(()=>{
       setReaderReturnVisible(true);
-      loadReturnQuestions();
+      if(!inspectionMode)loadReturnQuestions();
       readerFinishTimerRef.current=null;
     },180);
     return ()=>{
@@ -810,7 +810,7 @@ export default function Home(){
         readerFinishTimerRef.current=null;
       }
     };
-  },[view,readerPage,backCoverPage,readerAnimating,owned?.id]);
+  },[view,readerPage,backCoverPage,readerAnimating,readerBook?.id,inspectionMode]);
   const returnBook=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
     if(!owned||!loanId)return;
@@ -825,8 +825,8 @@ export default function Home(){
       const response=await fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"return",rating:returnRating,question,answers})});
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.error||"No se pudo devolver el libro");
-      setBooks(current=>current.map(book=>book.id===owned.id?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||book.reads}:book));
-      setSelected(current=>current?.id===owned.id?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||current.reads}:current);
+      setBooks(current=>current.map(book=>book.id===owned.id?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||book.reads,markedRead:payload.markedRead?true:book.markedRead}:book));
+      setSelected(current=>current?.id===owned.id?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||0,reads:Number(payload.reads)||current.reads,markedRead:payload.markedRead?true:current.markedRead}:current);
       syncLocalPagesRead(payload.pagesRead);
       setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);setReaderClosing(false);setReaderReturnVisible(false);setReaderAnimating(false);setReaderPendingPage(null);
       flash("Libro devuelto. Tu calificación y aportaciones quedaron guardadas.");
@@ -834,7 +834,7 @@ export default function Home(){
       flash(error instanceof Error?error.message:"No se pudo devolver el libro.");
     }
   };
-  const publish=async()=>{if(!currentUser){setAuthView("login");flash("Inicia sesión para publicar.");return}if(currentUser.approvalStatus!=="approved"){setView("notificaciones");flash("Tu cuenta debe estar aprobada para publicar.");return}const text=draft.trim();if(!text||publishing)return;setPublishing(true);try{const response=await fetch("/api/posts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,book:postBook})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar la publicación");setPosts(current=>[payload.post,...current]);setDraft("");flash("Tu reflexión ya está en la conversación.")}catch(error){flash(error instanceof Error?`No se pudo publicar: ${error.message}`:"No se pudo publicar la reflexión.")}finally{setPublishing(false)}};
+  const publish=async()=>{if(!currentUser){setAuthView("login");flash("Inicia sesión para publicar.");return}if(currentUser.approvalStatus!=="approved"){setView("notificaciones");flash("Tu cuenta debe estar aprobada para publicar.");return}const text=draft.trim();const related=books.find(book=>book.title===postBook);if(!text||publishing||!related)return;setPublishing(true);try{const response=await fetch("/api/posts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,book:postBook,bookId:related.id})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar la publicación");setPosts(current=>[payload.post,...current]);setDraft("");flash("Tu reflexión ya está en la conversación.")}catch(error){flash(error instanceof Error?`No se pudo publicar: ${error.message}`:"No se pudo publicar la reflexión.")}finally{setPublishing(false)}};
   const submitReply=(postId:number)=>{if(!currentUser){setAuthView("login");flash("Inicia sesión para responder.");return}if(currentUser.approvalStatus!=="approved"){setView("notificaciones");flash("Tu cuenta debe estar aprobada para responder.");return}if(!replyDrafts[postId]?.trim())return;setPosts(current=>current.map(post=>post.id===postId?{...post,replies:post.replies+1}:post));setReplyDrafts(current=>({...current,[postId]:""}));flash("Respuesta publicada")};
   const toggleProfileReaction=async(name:string,emoji:string)=>{const active=await toggleReaction("profile",name,emoji);if(active!==null)flash(active?`Reaccionaste al perfil de ${name}`:`Quitaste tu reacción a ${name}`)};
   const handleBookFile=async(file?:File)=>{
