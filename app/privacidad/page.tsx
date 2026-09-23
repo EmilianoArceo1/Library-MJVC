@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import BookLogo from "../components/BookLogo";
 
 export const metadata: Metadata = {
   title: "Política de privacidad | Biblioteca Jornadas",
@@ -12,7 +13,7 @@ export default function PrivacyPage() {
     <main className="legal-page">
       <header className="legal-header">
         <Link className="legal-brand" href="/">
-          <span className="brandmark">B</span>
+          <BookLogo/>
           <span>
             <b>Biblioteca Jornadas</b>
             <small>MJVC Mérida</small>
