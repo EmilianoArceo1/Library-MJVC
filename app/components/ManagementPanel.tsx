@@ -723,6 +723,54 @@ export default function ManagementPanel({
         </form>
       ) : null}
 
+      {editingRights && isAdmin && (
+        <div className="modal-back" onClick={() => setEditingRights(null)}>
+          <form className="profile-modal rights-admin-modal" onSubmit={saveRights} onClick={(event) => event.stopPropagation()}>
+            <button className="close" type="button" onClick={() => setEditingRights(null)}>×</button>
+            <p className="eyebrow">REVISAR DERECHOS</p>
+            <h2>{editingRights.title}</h2>
+            <p className="rights-modal-subtitle">{editingRights.author} · {editingRights.year}</p>
+            <label>
+              Situación
+              <select name="rightsStatus" defaultValue={editingRights.rightsStatus}>
+                {RIGHTS_OPTIONS.map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Titular o responsable
+              <input name="rightsHolder" maxLength={180} defaultValue={editingRights.rightsHolder || ""} placeholder="Autor, editorial, institución…" />
+            </label>
+            <label>
+              Fuente o licencia
+              <input name="rightsSourceUrl" type="url" maxLength={1000} defaultValue={editingRights.rightsSourceUrl || ""} placeholder="https://…" />
+            </label>
+            <label>
+              Quién concedió el permiso
+              <input name="rightsPermissionBy" maxLength={180} defaultValue={editingRights.rightsPermissionBy || ""} placeholder="Nombre y cargo, si aplica" />
+            </label>
+            <label>
+              Notas de derechos
+              <textarea name="rightsNotes" maxLength={2000} defaultValue={editingRights.rightsNotes || ""} placeholder="Licencia, fecha, alcance del permiso, fundamento de dominio público…" />
+            </label>
+            {editingRights.rightsEvidenceAvailable && (
+              <a className="evidence-link rights-modal-evidence" href={`/api/rights/evidence?bookId=${editingRights.id}`} target="_blank" rel="noreferrer">
+                Abrir evidencia privada ↗
+              </a>
+            )}
+            <label className="rights-publish-check">
+              <input type="checkbox" name="publish" defaultChecked={editingRights.publicationStatus === "published"} />
+              <span>Publicar el libro si la situación de derechos permite hacerlo</span>
+            </label>
+            <small className="rights-modal-help">Si eliges “Situación por revisar”, el servidor mantendrá el libro oculto aunque marques publicar.</small>
+            <button className="primary wide" disabled={Boolean(busyKey)}>
+              {busyKey.startsWith("rights:") ? "Guardando…" : "Guardar revisión"}
+            </button>
+          </form>
+        </div>
+      )}
+
       {editingUser && isAdmin && (
         <div className="modal-back" onClick={() => setEditingUser(null)}>
           <form className="profile-modal user-admin-modal" onSubmit={saveUser} onClick={(event) => event.stopPropagation()}>
