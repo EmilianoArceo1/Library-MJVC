@@ -21,7 +21,7 @@ async function requireModerator(request: Request) {
   if (
     !session ||
     !isModerator(session.role) ||
-    session.approvalStatus !== "approved"
+    !session.emailVerified || session.approvalStatus !== "approved"
   ) {
     return null;
   }

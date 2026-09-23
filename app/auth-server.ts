@@ -14,6 +14,7 @@ export type SessionUser = {
   email: string;
   role: UserRole;
   approvalStatus: ApprovalStatus;
+  emailVerified: boolean;
   description: string;
   pagesRead: number;
   photoUrl: string | null;
@@ -206,6 +207,7 @@ export async function getSessionUser(
       name: users.name,
       role: users.role,
       approvalStatus: users.approvalStatus,
+      emailVerifiedAt: users.emailVerifiedAt,
       email: authCredentials.email,
       description: users.description,
       pagesRead: users.pagesRead,
@@ -230,6 +232,7 @@ export async function getSessionUser(
     email: row.email,
     role: row.role as UserRole,
     approvalStatus: row.approvalStatus as ApprovalStatus,
+    emailVerified: row.emailVerifiedAt !== null,
     description: row.description,
     pagesRead: row.pagesRead,
     photoUrl: row.photoKey

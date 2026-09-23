@@ -2880,3 +2880,33 @@
   .notification-read-button{grid-column:2;justify-self:start}
   .notifications-hero h1,.management-hero h1{font-size:30px}
 }
+
+
+/* Email verification before registration approval */
+.account-status-banner.email-pending{
+  background:#eef3fb;
+  border-color:#9fb5d2;
+  color:#35506f;
+}
+.account-status-banner button:disabled{
+  opacity:.55;
+  cursor:wait;
+}
+:root[data-theme="dark"] .account-status-banner.email-pending{
+  background:#1e2a38;
+  border-color:#405a78;
+  color:#c8d9ee;
+}
+
+.email-verification-badge{
+  border-radius:99px;
+  padding:4px 7px;
+  font:700 8px Arial,sans-serif;
+  text-transform:uppercase;
+  letter-spacing:.45px;
+  white-space:nowrap;
+}
+.email-verification-badge.verified{background:#dcebdc;color:#356143}
+.email-verification-badge.unverified{background:#dfe8f4;color:#405d7d}
+:root[data-theme="dark"] .email-verification-badge.verified{background:#233629;color:#b9dfc0}
+:root[data-theme="dark"] .email-verification-badge.unverified{background:#243246;color:#bfd0e5}

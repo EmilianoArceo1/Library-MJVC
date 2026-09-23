@@ -7,7 +7,7 @@ async function requireAdmin(request: Request) {
   if (
     !session ||
     session.role !== "admin" ||
-    session.approvalStatus !== "approved"
+    !session.emailVerified || session.approvalStatus !== "approved"
   ) {
     return null;
   }
@@ -32,6 +32,7 @@ export async function GET(request: Request) {
         u.description,
         u.role,
         u.approval_status AS approvalStatus,
+        CASE WHEN u.email_verified_at IS NULL THEN 0 ELSE 1 END AS emailVerified,
         u.pages_read AS pagesRead,
         a.email
        FROM users u
@@ -129,6 +130,7 @@ export async function PATCH(request: Request) {
       `SELECT
         u.id, u.name, u.description, u.role,
         u.approval_status AS approvalStatus,
+        CASE WHEN u.email_verified_at IS NULL THEN 0 ELSE 1 END AS emailVerified,
         u.pages_read AS pagesRead, a.email
        FROM users u
        LEFT JOIN auth_credentials a ON a.user_id = u.id
@@ -266,6 +268,7 @@ export async function DELETE(request: Request) {
     }
 
     const cleanup = [
+      ["DELETE FROM email_verification_tokens WHERE user_id = ?", id],
       ["DELETE FROM notification_reads WHERE user_id = ?", id],
       ["DELETE FROM notifications WHERE user_id = ?", id],
       ["DELETE FROM user_preferences WHERE user_id = ?", id],
