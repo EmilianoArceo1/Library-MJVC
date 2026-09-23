@@ -50,7 +50,7 @@ export const books = sqliteTable("books", {
   coverKey: text("cover_key"),
   rating: real("rating").notNull().default(0),
   publicationStatus: text("publication_status", { enum: ["published", "hidden"] }).notNull().default("published"),
-  rightsStatus: text("rights_status", { enum: ["own_work", "public_domain", "creative_commons", "permission", "official_source", "review"] }).notNull().default("review"),
+  rightsStatus: text("rights_status", { enum: ["own_work", "public_domain", "creative_commons", "permission", "rights_reserved", "official_source", "review"] }).notNull().default("review"),
   rightsHolder: text("rights_holder").notNull().default(""),
   rightsSourceUrl: text("rights_source_url").notNull().default(""),
   rightsPermissionBy: text("rights_permission_by").notNull().default(""),
