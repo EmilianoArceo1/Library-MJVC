@@ -817,12 +817,18 @@ export default function Home(){
       const covers=["linear-gradient(145deg,#274b3d,#6f9b6b)","linear-gradient(145deg,#12354b,#2d7794)","linear-gradient(145deg,#7c2636,#d35b4d)","linear-gradient(145deg,#493362,#b45e75)","linear-gradient(145deg,#3b214e,#b37838)","linear-gradient(145deg,#213e55,#699c79)"];
       const index=books.length;
       const created:Book={...payload.book,reads:0,color:palette[index%palette.length],cover:covers[index%covers.length],readers:Array.isArray(payload.book.readers)?payload.book.readers:[]};
-      setBooks(current=>[...current,created]);
-      setSelected(created);
-      setPostBook(current=>current||created.title);
-      setShelfPage(0);
-      setView("biblioteca");
-      flash(`“${created.title}” ya está guardado en la biblioteca.`);
+      if(created.publicationStatus==="published"){
+        setBooks(current=>[...current,created]);
+        setSelected(created);
+        setPostBook(current=>current||created.title);
+        setShelfPage(0);
+        setView("biblioteca");
+        flash(`“${created.title}” ya está guardado en la biblioteca.`);
+      }else{
+        setView("gestion");
+        setCatalogNonce(value=>value+1);
+        flash(`“${created.title}” quedó oculto hasta resolver su situación de derechos.`);
+      }
     }catch(error){
       flash(error instanceof Error?error.message:"No se pudo procesar el libro.");
     }finally{
@@ -843,6 +849,11 @@ export default function Home(){
         type:String(data.get("type")||""),
         synopsis:String(data.get("synopsis")||""),
         copies:Number(data.get("copies")),
+        rightsStatus:String(data.get("rightsStatus")||"review"),
+        rightsHolder:String(data.get("rightsHolder")||""),
+        rightsSourceUrl:String(data.get("rightsSourceUrl")||""),
+        rightsPermissionBy:String(data.get("rightsPermissionBy")||""),
+        rightsNotes:String(data.get("rightsNotes")||""),
       })});
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.error||"No se pudo editar el libro");
