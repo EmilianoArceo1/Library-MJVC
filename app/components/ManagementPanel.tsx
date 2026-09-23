@@ -827,7 +827,17 @@ export default function ManagementPanel({
             <p className="rights-modal-subtitle">{editingRights.author} · {editingRights.year}</p>
             <label>
               Situación
-              <select name="rightsStatus" defaultValue={editingRights.rightsStatus}>
+              <select
+                name="rightsStatus"
+                value={editingRights.rightsStatus}
+                onChange={(event) =>
+                  setEditingRights((current) =>
+                    current
+                      ? { ...current, rightsStatus: event.target.value as RightsBook["rightsStatus"] }
+                      : current,
+                  )
+                }
+              >
                 {RIGHTS_OPTIONS.map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
                 ))}
