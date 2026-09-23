@@ -849,11 +849,6 @@ export default function Home(){
         type:String(data.get("type")||""),
         synopsis:String(data.get("synopsis")||""),
         copies:Number(data.get("copies")),
-        rightsStatus:String(data.get("rightsStatus")||"review"),
-        rightsHolder:String(data.get("rightsHolder")||""),
-        rightsSourceUrl:String(data.get("rightsSourceUrl")||""),
-        rightsPermissionBy:String(data.get("rightsPermissionBy")||""),
-        rightsNotes:String(data.get("rightsNotes")||""),
       })});
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.error||"No se pudo editar el libro");
