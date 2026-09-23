@@ -78,14 +78,20 @@ export async function PATCH(request: Request) {
     }
 
     const row = await env.DB.prepare(
-      "SELECT id, user_id AS userId, status FROM book_upload_requests WHERE id = ? LIMIT 1",
+      "SELECT id, user_id AS userId, status, file_key AS fileKey FROM book_upload_requests WHERE id = ? LIMIT 1",
     )
       .bind(id)
-      .first<{ id: number; userId: string; status: string }>();
+      .first<{ id: number; userId: string; status: string; fileKey: string }>();
     if (!row) return Response.json({ error: "Propuesta no encontrada." }, { status: 404 });
     if (row.userId === session.id) {
       return Response.json(
         { error: "No puedes revisar jurídicamente tu propia propuesta." },
+        { status: 409 },
+      );
+    }
+    if (status !== "rights_reserved" && !row.fileKey) {
+      return Response.json(
+        { error: "Esta propuesta no tiene archivo interno; solo puede mantenerse como obra de derechos reservados con lectura externa." },
         { status: 409 },
       );
     }
