@@ -114,6 +114,12 @@ export async function PATCH(request: Request) {
         { status: 400 },
       );
     }
+    if (status === "rights_reserved" && !holder) {
+      return Response.json(
+        { error: "Para una obra con derechos reservados, indica al titular o responsable de los derechos." },
+        { status: 400 },
+      );
+    }
     if (
       (status === "creative_commons" ||
         status === "official_source" ||
