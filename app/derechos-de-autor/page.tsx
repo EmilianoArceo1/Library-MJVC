@@ -26,26 +26,37 @@ export default function CopyrightPage() {
       <article className="legal-document">
         <p className="eyebrow">DERECHOS DE AUTOR</p>
         <h1>Política de materiales y retirada</h1>
-        <p className="legal-updated">Última actualización: 22 de septiembre de 2026</p>
+        <p className="legal-updated">Última actualización: 23 de septiembre de 2026</p>
 
         <p className="legal-lead">
-          Biblioteca Jornadas busca alojar únicamente obras propias, materiales
-          de dominio público, contenidos con licencia compatible, fuentes
-          oficiales que autoricen la reproducción o materiales para los que
-          exista permiso suficiente del titular.
+          Biblioteca Jornadas distingue entre materiales que pueden leerse dentro
+          de la plataforma y obras con derechos reservados que se muestran como
+          referencia bibliográfica y remiten a una fuente externa para su lectura.
+          La clasificación interna no sustituye una autorización del titular.
         </p>
 
         <section>
-          <h2>1. Revisión previa</h2>
+          <h2>1. Revisión previa y obras con derechos reservados</h2>
           <p>
             Cada libro debe registrar su situación de derechos antes de
             publicarse. Los materiales marcados como “Situación por revisar” se
-            mantienen ocultos y no pueden aprobarse para lectura hasta que una
-            persona administradora o asesora revise la información disponible.
-            La categoría “Derechos reservados” identifica una obra protegida y,
-            por sí sola, no constituye autorización para reproducirla o ponerla
-            a disposición; para publicarla debe registrarse una base de uso
-            suficiente, como permiso del titular.
+            mantienen ocultos hasta que una persona administradora o asesora
+            revise la información disponible.
+          </p>
+          <p>
+            Cuando una obra se clasifica como “Derechos reservados”, la modalidad
+            ordinaria consiste en mostrar su ficha en el estante y dirigir al
+            usuario mediante un enlace hacia una fuente externa legítima donde
+            pueda consultarla. Esa modalidad no aloja ni entrega la obra desde la
+            biblioteca y no suma páginas leídas.
+          </p>
+          <p>
+            Si existe una copia interna, únicamente una persona administradora
+            puede habilitar expresamente su lectura dentro de Biblioteca Jornadas.
+            Esa decisión queda separada de la clasificación de derechos y no
+            significa que la plataforma declare que existe autorización jurídica.
+            Las lecturas internas de obras con derechos reservados tampoco suman
+            páginas a las estadísticas.
           </p>
         </section>
 
@@ -98,13 +109,20 @@ export default function CopyrightPage() {
         </section>
 
         <section>
-          <h2>6. Acceso técnico al contenido</h2>
+          <h2>6. Acceso técnico, inspección y lectura externa</h2>
           <p>
-            Los archivos de lectura no se publican mediante enlaces directos del
-            almacenamiento. Se entregan mediante la aplicación únicamente a
-            usuarios autorizados y, salvo accesos administrativos, requieren un
-            préstamo activo. Las respuestas de contenido se sirven con
-            instrucciones técnicas de no indexación y sin caché pública.
+            Los archivos de lectura interna no se publican mediante enlaces
+            directos del almacenamiento. Se entregan mediante la aplicación a
+            usuarios autorizados y, en el uso ordinario, requieren un préstamo
+            activo. Las respuestas de contenido se sirven con instrucciones
+            técnicas de no indexación y sin caché pública.
+          </p>
+          <p>
+            Administradores y asesores pueden usar un modo de inspección que no
+            crea un préstamo, no registra progreso, no solicita preguntas ni
+            calificación y no suma páginas leídas. En las obras con derechos
+            reservados cuya modalidad sea externa, la aplicación abre la fuente
+            indicada en lugar de entregar una copia interna.
           </p>
         </section>
 
