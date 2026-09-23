@@ -7,6 +7,7 @@ export const users = sqliteTable("users", {
   photoKey: text("photo_key"),
   role: text("role", { enum: ["reader", "advisor", "admin"] }).notNull().default("reader"),
   approvalStatus: text("approval_status", { enum: ["pending", "approved", "rejected"] }).notNull().default("approved"),
+  emailVerifiedAt: integer("email_verified_at"),
   pagesRead: integer("pages_read").notNull().default(0),
 });
 
