@@ -323,11 +323,11 @@ export async function PATCH(request: Request) {
     const synopsis = payload.synopsis?.trim() ?? "";
     const year = Number(payload.year);
     const copies = Number(payload.copies);
-    const rightsStatus = payload.rightsStatus?.trim() ?? "";
-    const rightsHolder = payload.rightsHolder?.trim().slice(0, 180) ?? "";
-    const rightsSourceUrl = payload.rightsSourceUrl?.trim().slice(0, 1000) ?? "";
-    const rightsPermissionBy = payload.rightsPermissionBy?.trim().slice(0, 180) ?? "";
-    const rightsNotes = payload.rightsNotes?.trim().slice(0, 2000) ?? "";
+    const rightsStatusInput = payload.rightsStatus?.trim();
+    const rightsHolderInput = payload.rightsHolder?.trim().slice(0, 180);
+    const rightsSourceUrlInput = payload.rightsSourceUrl?.trim().slice(0, 1000);
+    const rightsPermissionByInput = payload.rightsPermissionBy?.trim().slice(0, 180);
+    const rightsNotesInput = payload.rightsNotes?.trim().slice(0, 2000);
 
     if (!Number.isInteger(id) || id < 1) {
       return Response.json({ error: "Libro inválido." }, { status: 400 });
@@ -344,17 +344,36 @@ export async function PATCH(request: Request) {
     if (!Number.isInteger(copies) || copies < 1 || copies > 1000) {
       return Response.json({ error: "Los ejemplares no son válidos." }, { status: 400 });
     }
-    if (!isRightsStatus(rightsStatus)) {
+    if (rightsStatusInput !== undefined && !isRightsStatus(rightsStatusInput)) {
       return Response.json({ error: "Selecciona una situación de derechos válida." }, { status: 400 });
     }
-    if (rightsSourceUrl) {
+    if (rightsSourceUrlInput) {
       try {
-        const parsed = new URL(rightsSourceUrl);
+        const parsed = new URL(rightsSourceUrlInput);
         if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error();
       } catch {
         return Response.json({ error: "La URL de derechos no es válida." }, { status: 400 });
       }
     }
+
+    const db = getDb();
+    const [current] = await db
+      .select()
+      .from(books)
+      .where(eq(books.id, id))
+      .limit(1);
+
+    if (!current) {
+      return Response.json({ error: "Ese libro ya no existe." }, { status: 404 });
+    }
+    const rightsStatus = rightsStatusInput && isRightsStatus(rightsStatusInput)
+      ? rightsStatusInput
+      : current.rightsStatus;
+    const rightsHolder = rightsHolderInput ?? current.rightsHolder;
+    const rightsSourceUrl = rightsSourceUrlInput ?? current.rightsSourceUrl;
+    const rightsPermissionBy = rightsPermissionByInput ?? current.rightsPermissionBy;
+    const rightsNotes = rightsNotesInput ?? current.rightsNotes;
+
     if (rightsStatus === "permission" && (!rightsHolder || !rightsPermissionBy)) {
       return Response.json(
         { error: "Para usar permiso del titular, indica titular y quién concedió el permiso." },
@@ -372,17 +391,6 @@ export async function PATCH(request: Request) {
         { error: "Añade una fuente o nota que permita comprobar los derechos." },
         { status: 400 },
       );
-    }
-
-    const db = getDb();
-    const [current] = await db
-      .select()
-      .from(books)
-      .where(eq(books.id, id))
-      .limit(1);
-
-    if (!current) {
-      return Response.json({ error: "Ese libro ya no existe." }, { status: 404 });
     }
 
     const borrowed = Math.max(0, current.totalCopies - current.availableCopies);
@@ -408,9 +416,15 @@ export async function PATCH(request: Request) {
         rightsSourceUrl,
         rightsPermissionBy,
         rightsNotes,
-        publicationStatus: rightsCanPublish(rightsStatus) ? "published" : "hidden",
-        rightsVerifiedAt: rightsCanPublish(rightsStatus) ? Date.now() : null,
-        rightsVerifiedBy: rightsCanPublish(rightsStatus) ? session.name : null,
+        publicationStatus: rightsStatusInput !== undefined
+          ? (rightsCanPublish(rightsStatus) ? "published" : "hidden")
+          : current.publicationStatus,
+        rightsVerifiedAt: rightsStatusInput !== undefined
+          ? (rightsCanPublish(rightsStatus) ? Date.now() : null)
+          : current.rightsVerifiedAt,
+        rightsVerifiedBy: rightsStatusInput !== undefined
+          ? (rightsCanPublish(rightsStatus) ? session.name : null)
+          : current.rightsVerifiedBy,
       })
       .where(eq(books.id, id))
       .returning();
