@@ -35,6 +35,12 @@ type BookRequest = {
   updatedAt: number;
   lastDecisionBy?: string | null;
   lastDecisionAt?: number | null;
+  rightsStatus?: "own_work" | "public_domain" | "creative_commons" | "permission" | "official_source" | "review";
+  rightsHolder?: string;
+  rightsSourceUrl?: string;
+  rightsPermissionBy?: string;
+  rightsNotes?: string;
+  rightsEvidenceAvailable?: boolean | number;
 };
 
 type DecisionRecord = {
@@ -59,7 +65,53 @@ type ManagedUser = {
   pagesRead: number;
 };
 
-type Tab = "pending" | "history" | "users" | "broadcast";
+type RightsBook = {
+  id: number;
+  title: string;
+  author: string;
+  year: number;
+  publicationStatus: "published" | "hidden";
+  rightsStatus: "own_work" | "public_domain" | "creative_commons" | "permission" | "official_source" | "review";
+  rightsHolder: string;
+  rightsSourceUrl: string;
+  rightsPermissionBy: string;
+  rightsNotes: string;
+  rightsEvidenceAvailable: boolean;
+  rightsVerifiedAt?: number | null;
+  rightsVerifiedBy?: string | null;
+};
+
+type CopyrightReport = {
+  id: number;
+  bookId: number;
+  bookTitle: string | null;
+  bookAuthor: string | null;
+  reporterName: string;
+  reporterEmail: string;
+  claimantName: string;
+  claimantEmail: string;
+  relationship: string;
+  evidenceUrl: string;
+  details: string;
+  status: "pending" | "reviewing" | "resolved" | "dismissed";
+  resolutionNote: string;
+  resolvedBy?: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+const RIGHTS_OPTIONS = [
+  ["own_work", "Obra propia"],
+  ["public_domain", "Dominio público"],
+  ["creative_commons", "Creative Commons"],
+  ["permission", "Permiso del titular"],
+  ["official_source", "Fuente oficial con permiso"],
+  ["review", "Situación por revisar"],
+] as const;
+const rightsLabel = (status?: string) =>
+  RIGHTS_OPTIONS.find(([value]) => value === status)?.[1] ?? "Por revisar";
+
+type Tab = "pending" | "history" | "rights" | "users" | "broadcast";
 
 const statusLabel = (status: string) =>
   status === "approved" ? "Aprobada" : status === "rejected" ? "Rechazada" : "Pendiente";
