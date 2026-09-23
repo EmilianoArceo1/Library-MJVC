@@ -3,6 +3,7 @@ import Link from "next/link";
 import BookLogo from "../components/BookLogo";
 
 export const metadata: Metadata = {
+  robots: { index: true, follow: true },
   title: "Biblioteca Jornadas",
   description:
     "Biblioteca digital de Jornadas de Vida Cristiana Mérida para préstamo, lectura, comunidad y gestión de libros.",
