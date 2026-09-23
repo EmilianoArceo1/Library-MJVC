@@ -182,9 +182,17 @@ export async function POST(request: Request) {
           token: verification.token,
         });
       } catch (error) {
-        await deleteEmailVerificationTokens(userId).catch(() => undefined);
-        await db.delete(authCredentials).where(eq(authCredentials.userId, userId)).catch(() => undefined);
-        await db.delete(users).where(eq(users.id, userId)).catch(() => undefined);
+        try {
+          await deleteEmailVerificationTokens(userId);
+        } catch {}
+        try {
+          await db
+            .delete(authCredentials)
+            .where(eq(authCredentials.userId, userId));
+        } catch {}
+        try {
+          await db.delete(users).where(eq(users.id, userId));
+        } catch {}
         throw error;
       }
 
