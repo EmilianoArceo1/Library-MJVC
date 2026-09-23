@@ -9,7 +9,12 @@ import {
   normalizeEmail,
   type SessionUser,
 } from "../../../auth-server";
-import { createNotification, ensureWorkflowSchema } from "../../../workflow-server";
+import { ensureWorkflowSchema } from "../../../workflow-server";
+import {
+  createEmailVerificationToken,
+  deleteEmailVerificationTokens,
+  sendVerificationEmail,
+} from "../../../email-server";
 
 const ADMIN_USER_ID = "emiliano-admin";
 
@@ -128,7 +133,7 @@ export async function POST(request: Request) {
       await db.batch([
         db
           .update(users)
-          .set({ name, role: "admin", approvalStatus: "approved" })
+          .set({ name, role: "admin", approvalStatus: "approved", emailVerifiedAt: Date.now() })
           .where(eq(users.id, ADMIN_USER_ID)),
         db.insert(authCredentials).values({
           userId: ADMIN_USER_ID,
@@ -144,6 +149,7 @@ export async function POST(request: Request) {
         email,
         role: "admin",
         approvalStatus: "approved",
+        emailVerified: true,
         description: "",
         pagesRead: 0,
         photoUrl: null,
@@ -151,13 +157,13 @@ export async function POST(request: Request) {
     } else {
       const userId = crypto.randomUUID();
 
-      const now = Date.now();
       await db.batch([
         db.insert(users).values({
           id: userId,
           name,
           role: "reader",
           approvalStatus: "pending",
+          emailVerifiedAt: null,
         }),
         db.insert(authCredentials).values({
           userId,
@@ -166,20 +172,21 @@ export async function POST(request: Request) {
           passwordSalt: passwordRecord.passwordSalt,
         }),
       ]);
-      await env.DB.prepare(
-        `INSERT INTO account_requests
-          (user_id, requester_name, requester_email, status, requested_at, updated_at)
-         VALUES (?, ?, ?, 'pending', ?, ?)`,
-      )
-        .bind(userId, name, email, now, now)
-        .run();
-      await createNotification({
-        userId,
-        title: "Solicitud de registro enviada",
-        body:
-          "Tu cuenta quedó pendiente de revisión. Un administrador o asesor te notificará aquí cuando tome una decisión.",
-        kind: "registration",
-      });
+
+      try {
+        const verification = await createEmailVerificationToken(userId);
+        await sendVerificationEmail({
+          request,
+          email,
+          name,
+          token: verification.token,
+        });
+      } catch (error) {
+        await deleteEmailVerificationTokens(userId).catch(() => undefined);
+        await db.delete(authCredentials).where(eq(authCredentials.userId, userId)).catch(() => undefined);
+        await db.delete(users).where(eq(users.id, userId)).catch(() => undefined);
+        throw error;
+      }
 
       user = {
         id: userId,
@@ -187,6 +194,7 @@ export async function POST(request: Request) {
         email,
         role: "reader",
         approvalStatus: "pending",
+        emailVerified: false,
         description: "",
         pagesRead: 0,
         photoUrl: null,
@@ -197,9 +205,11 @@ export async function POST(request: Request) {
     return Response.json(
       {
         user,
-        pending: user.approvalStatus === "pending",
-        message:
-          user.approvalStatus === "pending"
+        emailVerificationPending: !user.emailVerified,
+        pending: user.emailVerified && user.approvalStatus === "pending",
+        message: !user.emailVerified
+          ? "Te enviamos un correo de verificación. Tu solicitud llegará al administrador y a los asesores después de confirmar ese enlace."
+          : user.approvalStatus === "pending"
             ? "Tu solicitud fue enviada al administrador para revisión."
             : "Cuenta configurada correctamente.",
       },
