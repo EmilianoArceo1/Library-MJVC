@@ -3224,3 +3224,209 @@
   .oauth-homepage-footer{flex-direction:column}
   .oauth-homepage-footer nav{justify-content:flex-start}
 }
+
+
+/* Copyright safeguards and rights review */
+.rights-section{
+  margin-top:4px;
+  padding:20px;
+  border:1px solid #d5c0a8;
+  border-radius:12px;
+  background:#fbf5ec;
+}
+.rights-section h3{margin:2px 0 4px;font-size:20px;font-weight:500}
+.rights-section>div>small{color:var(--muted);font:10px/1.5 Arial,sans-serif}
+.rights-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+  margin-top:16px;
+}
+.rights-grid label{
+  display:grid;
+  gap:6px;
+  font:700 11px Arial,sans-serif;
+  color:#695e53;
+}
+.rights-grid .full{grid-column:1/-1}
+.rights-grid input,.rights-grid select,.rights-grid textarea{
+  border:1px solid #d9cebd;
+  background:#fffdf8;
+  border-radius:8px;
+  padding:11px 12px;
+  outline:none;
+}
+.rights-grid textarea{min-height:92px;resize:vertical}
+.rights-evidence small{font-weight:400;color:var(--muted)}
+.rights-evidence input{font:10px Arial,sans-serif}
+.rights-public-card{
+  margin:14px 0;
+  padding:12px 14px;
+  border:1px solid #dfd0bf;
+  border-radius:10px;
+  background:#f7f0e7;
+  display:grid;
+  gap:3px;
+}
+.rights-public-card small{font:700 8px Arial,sans-serif;letter-spacing:.8px;color:#9b6c42;text-transform:uppercase}
+.rights-public-card b{font-size:13px}
+.rights-public-card span{font:10px Arial,sans-serif;color:var(--muted)}
+.rights-public-card a,.copyright-report-link{
+  color:#8c562f;
+  font:700 10px Arial,sans-serif;
+}
+.copyright-report-link{
+  width:100%;
+  border:0;
+  background:none;
+  padding:12px 0 0;
+  text-decoration:underline;
+}
+.edit-rights-note{
+  margin:12px 0 18px;
+  padding:11px 13px;
+  border-radius:9px;
+  background:#f1e7db;
+  display:grid;
+  gap:3px;
+  text-align:left;
+}
+.edit-rights-note b{font-size:11px}
+.edit-rights-note span{font:10px/1.4 Arial,sans-serif;color:var(--muted)}
+.copyright-modal{
+  width:min(620px,95vw);
+  max-height:90vh;
+  overflow:auto;
+  background:#fffaf2;
+  border-radius:15px;
+  padding:34px;
+  position:relative;
+}
+.copyright-modal h2{margin:5px 0 8px;font-size:27px}
+.copyright-modal>p{font:12px/1.55 Arial,sans-serif;color:var(--muted)}
+.copyright-modal label{
+  display:grid;
+  gap:7px;
+  margin:15px 0;
+  text-align:left;
+  font:700 11px Arial,sans-serif;
+  color:#695e53;
+}
+.copyright-modal input,.copyright-modal select,.copyright-modal textarea{
+  border:1px solid #d9cebd;
+  background:#fffdf8;
+  border-radius:8px;
+  padding:11px 12px;
+}
+.copyright-modal textarea{min-height:105px;resize:vertical}
+.copyright-policy-note a{color:#8c562f}
+
+.request-rights-detail{
+  margin:10px 0;
+  padding:10px 12px;
+  border-left:3px solid #b98a55;
+  background:#f8f1e8;
+  display:grid;
+  gap:4px;
+}
+.request-rights-detail span,.request-rights-detail a,.request-rights-detail p{
+  margin:0;
+  font:10px/1.45 Arial,sans-serif;
+}
+.request-rights-detail a{color:#8a562e}
+.rights-warning{color:#9b4439;font:700 10px Arial,sans-serif}
+.rights-management-layout{display:grid;gap:28px}
+.rights-management-section{
+  background:#fffaf3;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:20px;
+}
+.rights-books-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.rights-book-card,.copyright-report-card{
+  background:#fffdf8;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:15px;
+}
+.rights-summary{display:grid;gap:3px;margin:12px 0}
+.rights-summary b{font-size:13px}
+.rights-summary span{font:10px Arial,sans-serif;color:var(--muted)}
+.rights-book-card>p{font:11px/1.45 Arial,sans-serif;color:#66584c}
+.rights-book-card>a,.copyright-report-card>a{color:#8a562e;font:700 10px Arial,sans-serif}
+.evidence-link{display:inline-flex;text-decoration:none;align-items:center}
+.copyright-report-list{display:grid;gap:12px}
+.copyright-status{
+  border-radius:99px;
+  padding:5px 8px;
+  font:700 8px Arial,sans-serif;
+  text-transform:uppercase;
+}
+.copyright-status.pending{background:#f8e7bd;color:#876123}
+.copyright-status.reviewing{background:#dfe8f4;color:#405d7d}
+.copyright-status.resolved{background:#dcebdc;color:#356143}
+.copyright-status.dismissed{background:#ece7e1;color:#6d6258}
+.copyright-report-meta{display:grid;gap:3px;margin:10px 0;color:var(--muted);font:9px Arial,sans-serif}
+.copyright-report-card>p{font:12px/1.5 Arial,sans-serif;color:#5d5147}
+.copyright-resolution{
+  margin-top:10px;
+  padding:10px 12px;
+  border-radius:9px;
+  background:#edf1e8;
+  display:grid;
+  gap:3px;
+}
+.copyright-resolution b{font-size:10px}
+.copyright-resolution span,.copyright-resolution small{font:10px/1.4 Arial,sans-serif;color:#5b6659}
+.rights-admin-modal{max-height:90vh;overflow:auto}
+.rights-admin-modal select{
+  border:1px solid #d9cebd;
+  background:#fffdf8;
+  border-radius:8px;
+  padding:11px 12px;
+}
+.rights-modal-subtitle{color:var(--muted);font:11px Arial,sans-serif}
+.rights-modal-evidence{margin:8px 0 14px}
+.rights-publish-check{
+  display:flex!important;
+  grid-template-columns:auto 1fr;
+  align-items:center;
+  gap:9px!important;
+}
+.rights-publish-check input{width:auto}
+.rights-modal-help{display:block;margin:-8px 0 16px;color:var(--muted);font:9px/1.45 Arial,sans-serif}
+
+:root[data-theme="dark"] .rights-section,
+:root[data-theme="dark"] .rights-public-card,
+:root[data-theme="dark"] .edit-rights-note,
+:root[data-theme="dark"] .request-rights-detail,
+:root[data-theme="dark"] .rights-management-section,
+:root[data-theme="dark"] .rights-book-card,
+:root[data-theme="dark"] .copyright-report-card,
+:root[data-theme="dark"] .copyright-modal,
+:root[data-theme="dark"] .copyright-resolution{
+  background:#211c18;
+  color:#eee5db;
+  border-color:#433a32;
+}
+:root[data-theme="dark"] .rights-grid input,
+:root[data-theme="dark"] .rights-grid select,
+:root[data-theme="dark"] .rights-grid textarea,
+:root[data-theme="dark"] .copyright-modal input,
+:root[data-theme="dark"] .copyright-modal select,
+:root[data-theme="dark"] .copyright-modal textarea,
+:root[data-theme="dark"] .rights-admin-modal select{
+  background:#211c18;
+  color:#eee5db;
+  border-color:#50453b;
+}
+
+@media(max-width:760px){
+  .rights-grid,.rights-books-grid{grid-template-columns:1fr}
+  .rights-grid .full{grid-column:auto}
+  .copyright-modal{padding:28px 20px}
+}
