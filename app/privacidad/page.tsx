@@ -76,6 +76,11 @@ export default function PrivacyPage() {
               administradora o asesora que tomó cada decisión.
             </li>
             <li>
+              Derechos de autor: situación declarada de cada obra, titular o
+              responsable, fuentes o licencias, notas, evidencia privada de
+              autorización y reclamaciones de retirada cuando existan.
+            </li>
+            <li>
               Datos técnicos necesarios para la sesión y seguridad, como
               identificadores de sesión y tokens temporales.
             </li>
@@ -99,6 +104,10 @@ export default function PrivacyPage() {
             <li>
               Enviar notificaciones relacionadas con la cuenta y avisos generales
               de la biblioteca.
+            </li>
+            <li>
+              Revisar la base de uso de los materiales, gestionar reclamaciones de
+              derechos de autor y documentar decisiones de publicación o retirada.
             </li>
             <li>Proteger la plataforma, prevenir abuso y mantener su operación.</li>
           </ul>
@@ -155,7 +164,8 @@ export default function PrivacyPage() {
             páginas leídas, lectura activa, publicaciones, preguntas, respuestas y
             reacciones. Las decisiones privadas de registro o de propuestas de
             libros se muestran únicamente a las personas autorizadas y al usuario
-            afectado cuando corresponda.
+            afectado cuando corresponda. La evidencia privada de derechos y los
+            datos de reclamaciones se limitan a las personas con permisos de revisión.
           </p>
         </section>
 
