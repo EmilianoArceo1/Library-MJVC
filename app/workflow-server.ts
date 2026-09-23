@@ -211,8 +211,16 @@ async function buildWorkflowSchema() {
     "UPDATE books SET publication_status = 'hidden' WHERE rights_status = 'review'",
   ).run();
   await env.DB.prepare(
-    "UPDATE books SET publication_status = 'published' WHERE rights_status = 'rights_reserved' AND rights_source_url <> ''",
-  ).run();
+    `UPDATE books
+     SET publication_status = 'published',
+         rights_verified_at = COALESCE(rights_verified_at, ?),
+         rights_verified_by = COALESCE(NULLIF(rights_verified_by, ''), 'Migración: enlace externo')
+     WHERE rights_status = 'rights_reserved'
+       AND rights_source_url <> ''
+       AND rights_verified_at IS NULL`,
+  )
+    .bind(Date.now())
+    .run();
 
   await env.DB.prepare(
     "UPDATE users SET approval_status = 'approved' WHERE approval_status IS NULL OR approval_status = ''",
