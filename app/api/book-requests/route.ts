@@ -39,7 +39,7 @@ export async function POST(request: Request) {
         { status: 401 },
       );
     }
-    if (session.approvalStatus !== "approved") {
+    if (!session.emailVerified || session.approvalStatus !== "approved") {
       return Response.json(
         { error: "Tu cuenta debe estar aprobada antes de proponer libros." },
         { status: 403 },
