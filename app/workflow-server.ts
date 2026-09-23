@@ -187,7 +187,7 @@ async function buildWorkflowSchema() {
   }
 
   await env.DB.prepare(
-    "UPDATE books SET publication_status = 'hidden' WHERE rights_status = 'review'",
+    "UPDATE books SET publication_status = 'hidden' WHERE rights_status IN ('review', 'rights_reserved')",
   ).run();
 
   await env.DB.prepare(

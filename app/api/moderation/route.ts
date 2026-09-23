@@ -287,9 +287,9 @@ export async function PATCH(request: Request) {
         { status: 409 },
       );
     }
-    if (decision === "approved" && requestRow.rightsStatus === "review") {
+    if (decision === "approved" && (requestRow.rightsStatus === "review" || requestRow.rightsStatus === "rights_reserved")) {
       return Response.json(
-        { error: "No se puede aprobar este libro mientras su situación de derechos esté por revisar." },
+        { error: requestRow.rightsStatus === "rights_reserved" ? "No se puede aprobar una obra con derechos reservados sin registrar antes una autorización válida." : "No se puede aprobar este libro mientras su situación de derechos esté por revisar." },
         { status: 409 },
       );
     }

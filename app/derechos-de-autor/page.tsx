@@ -42,6 +42,10 @@ export default function CopyrightPage() {
             publicarse. Los materiales marcados como “Situación por revisar” se
             mantienen ocultos y no pueden aprobarse para lectura hasta que una
             persona administradora o asesora revise la información disponible.
+            La categoría “Derechos reservados” identifica una obra protegida y,
+            por sí sola, no constituye autorización para reproducirla o ponerla
+            a disposición; para publicarla debe registrarse una base de uso
+            suficiente, como permiso del titular.
           </p>
         </section>
 

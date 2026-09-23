@@ -121,7 +121,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Ese libro ya no existe." }, { status: 404 });
     }
 
-    if (book.publicationStatus !== "published" || book.rightsStatus === "review") {
+    if (book.publicationStatus !== "published" || book.rightsStatus === "review" || book.rightsStatus === "rights_reserved") {
       return Response.json(
         { error: "Este libro está oculto mientras se revisa su situación de derechos." },
         { status: 403, headers: privateNoIndexHeaders("application/json; charset=utf-8") },
