@@ -313,7 +313,8 @@ export default function Home(){
         setPeople(loadedPeople);
         setCurrentUser(user=>{if(!user)return user;const person=loadedPeople.find(reader=>reader.id===user.id);return person?{...user,pagesRead:person.pages}:user});
         setSelected(current=>current&&loadedBooks.some(book=>book.id===current.id)?current:(loadedBooks[0]||null));
-        setPostBook(current=>current&&loadedBooks.some(book=>book.title===current)?current:(loadedBooks[0]?.title||""));
+        const eligibleForForum=loadedBooks.filter(book=>book.rightsStatus!=="rights_reserved"||book.markedRead);
+        setPostBook(current=>current&&eligibleForForum.some(book=>book.title===current)?current:(eligibleForForum[0]?.title||""));
       })
       .catch(error=>console.error("No se pudo cargar el catálogo real",error));
     return ()=>{cancelled=true};
@@ -415,6 +416,11 @@ export default function Home(){
     if(!currentUser.emailVerified){flash("Primero verifica tu correo desde el enlace que te enviamos.");return}
     if(currentUser.approvalStatus!=="approved"){setView("notificaciones");setModal(null);flash(currentUser.approvalStatus==="pending"?"Tu registro sigue pendiente de aprobación.":"Tu cuenta no está aprobada para tomar libros.");return}
     if(!selected){flash("Selecciona un libro primero.");return}
+    if(selected.rightsStatus==="rights_reserved"&&!selected.reservedInternalAccess){
+      if(selected.rightsSourceUrl)window.open(selected.rightsSourceUrl,"_blank","noopener,noreferrer");
+      else flash("Esta obra con derechos reservados no tiene una fuente legal configurada.");
+      return;
+    }
     if(selected.available<1){flash("Ese ejemplar está en préstamo.");return}
     if(owned){flash("Devuelve tu lectura actual antes de tomar otra.");return}
     try{
@@ -429,6 +435,65 @@ export default function Home(){
       flash(`“${selected.title}” ya está en tu poder.`);
     }catch(error){
       flash(error instanceof Error?error.message:"No se pudo tomar el libro.");
+    }
+  };
+  const inspectBook=(book:Book|null=selected)=>{
+    if(!book||!currentUser||!isModerator||!isApproved){flash("El modo de inspección es exclusivo de administradores y asesores aprobados.");return}
+    if(!book.hasInternalContent){flash("Este título no tiene contenido interno para inspeccionar.");return}
+    setInspectionBook({...book,progress:0});
+    setModal(null);
+    setReaderPage(0);
+    setReaderTotalPages(0);
+    setReaderPages([]);
+    setReaderError("");
+    setView("lector");
+  };
+  const endInspection=()=>{
+    setInspectionBook(null);
+    setView("biblioteca");
+    setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);setReaderError("");setReaderClosing(false);setReaderReturnVisible(false);setReaderAnimating(false);setReaderPendingPage(null);
+    flash("Inspección cerrada. No se registró progreso ni páginas leídas.");
+  };
+  const markReservedRead=async(book:Book)=>{
+    if(!currentUser){setAuthView("login");flash("Inicia sesión para marcar esta obra como leída.");return}
+    if(!currentUser.emailVerified||currentUser.approvalStatus!=="approved"){flash("Tu cuenta debe estar aprobada para marcar lecturas.");return}
+    if(book.rightsStatus!=="rights_reserved"||reservedReadBusy)return;
+    setReservedReadBusy(true);
+    try{
+      const next=!book.markedRead;
+      const response=await fetch("/api/books/mark-read",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({bookId:book.id,marked:next})});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.error||"No se pudo actualizar la lectura");
+      const update=(item:Book)=>item.id===book.id?{...item,markedRead:Boolean(payload.marked),reads:Number(payload.reads)||0}:item;
+      setBooks(current=>current.map(update));
+      setSelected(current=>current?update(current):current);
+      if(payload.marked&&!postBook)setPostBook(book.title);
+      if(!payload.marked&&postBook===book.title){
+        const alternate=books.find(item=>item.id!==book.id&&(item.rightsStatus!=="rights_reserved"||item.markedRead));
+        setPostBook(alternate?.title||"");
+      }
+      flash(payload.marked?"Marcado como leído. Ya puedes publicar reflexiones sobre esta obra.":"Se quitó la marca de lectura.");
+    }catch(error){
+      flash(error instanceof Error?error.message:"No se pudo actualizar la lectura.");
+    }finally{
+      setReservedReadBusy(false);
+    }
+  };
+  const abandonBook=async()=>{
+    if(!owned||!loanId)return;
+    if(!window.confirm("¿Devolver este libro sin terminarlo? No se guardarán calificación ni respuestas y esta lectura no sumará páginas."))return;
+    try{
+      const response=await fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"abandon"})});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.error||"No se pudo devolver el libro");
+      const returnedId=owned.id;
+      setBooks(current=>current.map(book=>book.id===returnedId?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||book.rating,reads:Number(payload.reads)??book.reads}:book));
+      setSelected(current=>current?.id===returnedId?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||current.rating,reads:Number(payload.reads)??current.reads}:current);
+      syncLocalPagesRead(payload.pagesRead);
+      setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);setReaderClosing(false);setReaderReturnVisible(false);setReaderAnimating(false);setReaderPendingPage(null);
+      flash("Libro devuelto sin terminar. Esta lectura no sumó páginas.");
+    }catch(error){
+      flash(error instanceof Error?error.message:"No se pudo devolver el libro.");
     }
   };
   const linesToPage=(rawLines:string[]):ReconstructedPage=>{
