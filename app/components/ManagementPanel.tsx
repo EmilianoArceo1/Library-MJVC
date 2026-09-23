@@ -530,6 +530,14 @@ export default function ManagementPanel({
                   </small>
                   <div className="request-actions">
                     <button
+                      className="secondary"
+                      type="button"
+                      disabled={Boolean(busyKey)}
+                      onClick={() => setEditingRequestRights(request)}
+                    >
+                      Revisar derechos
+                    </button>
+                    <button
                       className="primary"
                       disabled={Boolean(busyKey) || request.rightsStatus === "review"}
                       onClick={() => decide("book", request.id, "approved", `“${request.title}”`)}
@@ -753,6 +761,54 @@ export default function ManagementPanel({
           </button>
         </form>
       ) : null}
+
+      {editingRequestRights && (
+        <div className="modal-back" onClick={() => setEditingRequestRights(null)}>
+          <form className="profile-modal rights-admin-modal" onSubmit={saveRequestRights} onClick={(event) => event.stopPropagation()}>
+            <button className="close" type="button" onClick={() => setEditingRequestRights(null)}>×</button>
+            <p className="eyebrow">REVISAR PROPUESTA</p>
+            <h2>{editingRequestRights.title}</h2>
+            <p className="rights-modal-subtitle">
+              Propuesta de {editingRequestRights.requesterName} · {editingRequestRights.author}
+            </p>
+            <label>
+              Situación
+              <select name="rightsStatus" defaultValue={editingRequestRights.rightsStatus || "review"}>
+                {RIGHTS_OPTIONS.map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Titular o responsable
+              <input name="rightsHolder" maxLength={180} defaultValue={editingRequestRights.rightsHolder || ""} placeholder="Autor, editorial, institución…" />
+            </label>
+            <label>
+              Fuente o licencia
+              <input name="rightsSourceUrl" type="url" maxLength={1000} defaultValue={editingRequestRights.rightsSourceUrl || ""} placeholder="https://…" />
+            </label>
+            <label>
+              Quién concedió el permiso
+              <input name="rightsPermissionBy" maxLength={180} defaultValue={editingRequestRights.rightsPermissionBy || ""} placeholder="Nombre y cargo, si aplica" />
+            </label>
+            <label>
+              Notas de derechos
+              <textarea name="rightsNotes" maxLength={2000} defaultValue={editingRequestRights.rightsNotes || ""} placeholder="Licencia, fecha, alcance del permiso, fundamento de dominio público…" />
+            </label>
+            {editingRequestRights.rightsEvidenceAvailable && (
+              <a className="evidence-link rights-modal-evidence" href={`/api/rights/evidence?requestId=${editingRequestRights.id}`} target="_blank" rel="noreferrer">
+                Abrir evidencia privada ↗
+              </a>
+            )}
+            <small className="rights-modal-help">
+              Si queda “Situación por revisar”, la propuesta no podrá aprobarse. Esta revisión no cambia por sí sola el dictamen de la solicitud.
+            </small>
+            <button className="primary wide" disabled={Boolean(busyKey)}>
+              {busyKey.startsWith("request-rights:") ? "Guardando…" : "Guardar revisión"}
+            </button>
+          </form>
+        </div>
+      )}
 
       {editingRights && isAdmin && (
         <div className="modal-back" onClick={() => setEditingRights(null)}>
