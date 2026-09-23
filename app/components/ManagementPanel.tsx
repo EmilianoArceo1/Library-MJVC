@@ -55,6 +55,7 @@ type ManagedUser = {
   description: string;
   role: "reader" | "advisor" | "admin";
   approvalStatus: "pending" | "approved" | "rejected";
+  emailVerified: boolean | number;
   pagesRead: number;
 };
 
@@ -426,6 +427,9 @@ export default function ManagementPanel({
                   <span>{roleLabel(user.role)}</span>
                   <span className={`request-status ${user.approvalStatus}`}>
                     {statusLabel(user.approvalStatus)}
+                  </span>
+                  <span className={`email-verification-badge ${user.emailVerified ? "verified" : "unverified"}`}>
+                    {user.emailVerified ? "Correo verificado" : "Correo sin verificar"}
                   </span>
                 </div>
               </div>
