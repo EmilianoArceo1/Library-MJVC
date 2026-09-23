@@ -4,7 +4,7 @@ import { getDb } from "../../../../db";
 import { books, loans } from "../../../../db/schema";
 import { getSessionUser } from "../../../auth-server";
 import { privateNoIndexHeaders } from "../../../rights-server";
-import { ensureWorkflowSchema } from "../../../workflow-server";
+import { ensureWorkflowSchema, isModerator } from "../../../workflow-server";
 
 type RuntimeEnv = {
   BOOK_FILES: R2Bucket;
@@ -35,6 +35,7 @@ export async function GET(request: Request) {
         fileKey: books.fileKey,
         publicationStatus: books.publicationStatus,
         rightsStatus: books.rightsStatus,
+        reservedInternalAccess: books.reservedInternalAccess,
       })
       .from(books)
       .where(eq(books.id, bookId))
@@ -43,21 +44,31 @@ export async function GET(request: Request) {
     if (!book?.fileKey) {
       return new Response("Este libro no tiene contenido de lectura asociado.", { status: 404 });
     }
-    const isApprovedAdmin =
-      session.role === "admin" &&
+    const inspectionRequested = url.searchParams.get("inspect") === "1";
+    const isApprovedModerator =
       session.emailVerified &&
-      session.approvalStatus === "approved";
-    if (
-      !isApprovedAdmin &&
-      (book.publicationStatus !== "published" || book.rightsStatus === "review" || book.rightsStatus === "rights_reserved")
-    ) {
-      return new Response("Este contenido no está disponible para lectura.", {
-        status: 403,
-        headers: privateNoIndexHeaders("text/plain; charset=utf-8"),
-      });
-    }
+      session.approvalStatus === "approved" &&
+      isModerator(session.role);
 
-    if (!isApprovedAdmin) {
+    if (inspectionRequested) {
+      if (!isApprovedModerator) {
+        return new Response("El modo de inspección es exclusivo de administradores y asesores.", {
+          status: 403,
+          headers: privateNoIndexHeaders("text/plain; charset=utf-8"),
+        });
+      }
+    } else {
+      if (
+        book.publicationStatus !== "published" ||
+        book.rightsStatus === "review" ||
+        (book.rightsStatus === "rights_reserved" && !book.reservedInternalAccess)
+      ) {
+        return new Response("Este contenido no está disponible para lectura interna.", {
+          status: 403,
+          headers: privateNoIndexHeaders("text/plain; charset=utf-8"),
+        });
+      }
+
       const [loan] = await db
         .select({ id: loans.id })
         .from(loans)
@@ -71,7 +82,10 @@ export async function GET(request: Request) {
         .limit(1);
 
       if (!loan) {
-        return new Response("Necesitas tomar este libro antes de leerlo.", { status: 403 });
+        return new Response("Necesitas tomar este libro antes de leerlo.", {
+          status: 403,
+          headers: privateNoIndexHeaders("text/plain; charset=utf-8"),
+        });
       }
     }
 
