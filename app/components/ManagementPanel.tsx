@@ -484,6 +484,15 @@ export default function ManagementPanel({
                     <span>{request.pages} páginas</span>
                     <span>{request.copies} ejemplar{request.copies === 1 ? "" : "es"}</span>
                     <span>{request.type}</span>
+                    <span>{rightsLabel(request.rightsStatus)}</span>
+                  </div>
+                  <div className="request-rights-detail">
+                    {request.rightsHolder && <span>Titular: {request.rightsHolder}</span>}
+                    {request.rightsSourceUrl && <a href={request.rightsSourceUrl} target="_blank" rel="noreferrer">Fuente/licencia ↗</a>}
+                    {request.rightsPermissionBy && <span>Permiso: {request.rightsPermissionBy}</span>}
+                    {request.rightsNotes && <p>{request.rightsNotes}</p>}
+                    {request.rightsEvidenceAvailable && <a href={`/api/rights/evidence?requestId=${request.id}`} target="_blank" rel="noreferrer">Ver evidencia privada ↗</a>}
+                    {request.rightsStatus === "review" && <b className="rights-warning">No puede aprobarse hasta resolver los derechos.</b>}
                   </div>
                   <small>
                     Propuesto por {request.requesterName} · {request.originalName}
@@ -491,7 +500,7 @@ export default function ManagementPanel({
                   <div className="request-actions">
                     <button
                       className="primary"
-                      disabled={Boolean(busyKey)}
+                      disabled={Boolean(busyKey) || request.rightsStatus === "review"}
                       onClick={() => decide("book", request.id, "approved", `“${request.title}”`)}
                     >
                       Aprobar
