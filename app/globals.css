@@ -3490,11 +3490,6 @@
   font:10px/1.45 Arial,sans-serif;
   color:#684d3a;
 }
-.reader.reader-book-mode .reader-title span:first-letter{}
-.reader-title span{
-  display:block;
-}
-.reader-title span:has(+ *){}
 :root[data-theme="dark"] .reserved-reading-actions,
 :root[data-theme="dark"] .rights-risk-check{
   background:#211c18;
