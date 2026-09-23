@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { books, loans, users } from "../../../db/schema";
@@ -9,7 +10,7 @@ export async function GET() {
     await ensureWorkflowSchema();
     const db = getDb();
 
-    const [bookRows, userRows, activeLoanRows, pagesReadByUser, readCounts] =
+    const [bookRows, userRows, activeLoanRows, pagesReadByUser, readCounts, rejectedModeratedBooks] =
       await Promise.all([
         db.select().from(books).where(eq(books.publicationStatus, "published")).orderBy(books.title),
         db
@@ -33,6 +34,9 @@ export async function GET() {
           .where(isNull(loans.returnedAt)),
         computeAllUserPagesRead(),
         computeUniqueCompletedReadCounts(),
+        env.DB.prepare(
+          "SELECT created_book_id AS bookId FROM book_upload_requests WHERE status = 'rejected' AND created_book_id IS NOT NULL",
+        ).all<{ bookId: number }>(),
       ]);
 
     const currentReading = new Map(
@@ -49,8 +53,12 @@ export async function GET() {
         ),
     );
 
+    const hiddenBookIds = new Set(
+      rejectedModeratedBooks.results.map((row) => Number(row.bookId)),
+    );
+
     return Response.json({
-      books: bookRows.map((book) => ({
+      books: bookRows.filter((book) => !hiddenBookIds.has(book.id)).map((book) => ({
         id: book.id,
         title: book.title,
         author: book.author,
