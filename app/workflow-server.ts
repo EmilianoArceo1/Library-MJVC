@@ -59,7 +59,7 @@ async function buildWorkflowSchema() {
   for (const [column, definition] of bookRightsColumns) {
     if (!(await hasColumn("books", column))) {
       try {
-        await env.DB.prepare(\`ALTER TABLE books ADD COLUMN \${column} \${definition}\`).run();
+        await env.DB.prepare(`ALTER TABLE books ADD COLUMN ${column} ${definition}`).run();
       } catch (error) {
         if (!(await hasColumn("books", column))) throw error;
       }
@@ -76,13 +76,7 @@ async function buildWorkflowSchema() {
       requested_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       last_decision_by TEXT,
-      last_decision_at INTEGER,
-      rights_status TEXT NOT NULL DEFAULT 'review',
-      rights_holder TEXT NOT NULL DEFAULT '',
-      rights_source_url TEXT NOT NULL DEFAULT '',
-      rights_permission_by TEXT NOT NULL DEFAULT '',
-      rights_notes TEXT NOT NULL DEFAULT '',
-      rights_evidence_key TEXT
+      last_decision_at INTEGER
     )`,
     `CREATE TABLE IF NOT EXISTS book_upload_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -103,7 +97,13 @@ async function buildWorkflowSchema() {
       requested_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       last_decision_by TEXT,
-      last_decision_at INTEGER
+      last_decision_at INTEGER,
+      rights_status TEXT NOT NULL DEFAULT 'review',
+      rights_holder TEXT NOT NULL DEFAULT '',
+      rights_source_url TEXT NOT NULL DEFAULT '',
+      rights_permission_by TEXT NOT NULL DEFAULT '',
+      rights_notes TEXT NOT NULL DEFAULT '',
+      rights_evidence_key TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS request_decisions (
       id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
