@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { answers, books, loans, posts, questions } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
-import { deleteRightsEvidence, readRightsForm, rightsCanPublish, storeRightsEvidence } from "../../rights-server";
+import { deleteRightsEvidence, isRightsStatus, readRightsForm, rightsCanPublish, storeRightsEvidence } from "../../rights-server";
 import { ensureWorkflowSchema } from "../../workflow-server";
 
 const MAX_BOOK_BYTES = 25 * 1024 * 1024;
@@ -309,6 +309,11 @@ export async function PATCH(request: Request) {
       type?: string;
       synopsis?: string;
       copies?: number;
+      rightsStatus?: string;
+      rightsHolder?: string;
+      rightsSourceUrl?: string;
+      rightsPermissionBy?: string;
+      rightsNotes?: string;
     };
 
     const id = Number(payload.id);
@@ -318,6 +323,11 @@ export async function PATCH(request: Request) {
     const synopsis = payload.synopsis?.trim() ?? "";
     const year = Number(payload.year);
     const copies = Number(payload.copies);
+    const rightsStatus = payload.rightsStatus?.trim() ?? "";
+    const rightsHolder = payload.rightsHolder?.trim().slice(0, 180) ?? "";
+    const rightsSourceUrl = payload.rightsSourceUrl?.trim().slice(0, 1000) ?? "";
+    const rightsPermissionBy = payload.rightsPermissionBy?.trim().slice(0, 180) ?? "";
+    const rightsNotes = payload.rightsNotes?.trim().slice(0, 2000) ?? "";
 
     if (!Number.isInteger(id) || id < 1) {
       return Response.json({ error: "Libro inválido." }, { status: 400 });
@@ -333,6 +343,35 @@ export async function PATCH(request: Request) {
     }
     if (!Number.isInteger(copies) || copies < 1 || copies > 1000) {
       return Response.json({ error: "Los ejemplares no son válidos." }, { status: 400 });
+    }
+    if (!isRightsStatus(rightsStatus)) {
+      return Response.json({ error: "Selecciona una situación de derechos válida." }, { status: 400 });
+    }
+    if (rightsSourceUrl) {
+      try {
+        const parsed = new URL(rightsSourceUrl);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error();
+      } catch {
+        return Response.json({ error: "La URL de derechos no es válida." }, { status: 400 });
+      }
+    }
+    if (rightsStatus === "permission" && (!rightsHolder || !rightsPermissionBy)) {
+      return Response.json(
+        { error: "Para usar permiso del titular, indica titular y quién concedió el permiso." },
+        { status: 400 },
+      );
+    }
+    if (
+      (rightsStatus === "creative_commons" ||
+        rightsStatus === "official_source" ||
+        rightsStatus === "public_domain") &&
+      !rightsSourceUrl &&
+      !rightsNotes
+    ) {
+      return Response.json(
+        { error: "Añade una fuente o nota que permita comprobar los derechos." },
+        { status: 400 },
+      );
     }
 
     const db = getDb();
@@ -364,6 +403,14 @@ export async function PATCH(request: Request) {
         synopsis,
         totalCopies: copies,
         availableCopies: copies - borrowed,
+        rightsStatus,
+        rightsHolder,
+        rightsSourceUrl,
+        rightsPermissionBy,
+        rightsNotes,
+        publicationStatus: rightsCanPublish(rightsStatus) ? "published" : "hidden",
+        rightsVerifiedAt: rightsCanPublish(rightsStatus) ? Date.now() : null,
+        rightsVerifiedBy: rightsCanPublish(rightsStatus) ? session.name : null,
       })
       .where(eq(books.id, id))
       .returning();
@@ -380,6 +427,13 @@ export async function PATCH(request: Request) {
         copies: updated.totalCopies,
         available: updated.availableCopies,
         rating: updated.rating,
+        publicationStatus: updated.publicationStatus,
+        rightsStatus: updated.rightsStatus,
+        rightsHolder: updated.rightsHolder,
+        rightsSourceUrl: updated.rightsSourceUrl,
+        rightsPermissionBy: updated.rightsPermissionBy,
+        rightsNotes: updated.rightsNotes,
+        rightsEvidenceAvailable: Boolean(updated.rightsEvidenceKey),
         readers: [],
       },
     });
