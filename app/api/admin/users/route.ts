@@ -7,7 +7,7 @@ async function requireAdmin(request: Request) {
   if (
     !session ||
     session.role !== "admin" ||
-    session.approvalStatus !== "approved"
+    !session.emailVerified || session.approvalStatus !== "approved"
   ) {
     return null;
   }
