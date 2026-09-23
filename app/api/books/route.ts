@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     }
 
     if (
-      session.approvalStatus !== "approved" ||
+      !session.emailVerified || session.approvalStatus !== "approved" ||
       (session.role !== "admin" && session.role !== "advisor")
     ) {
       return Response.json(
@@ -269,7 +269,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const session = await getSessionUser(request);
-    if (!session || session.role !== "admin" || session.approvalStatus !== "approved") {
+    if (!session || session.role !== "admin" || !session.emailVerified || session.approvalStatus !== "approved") {
       return Response.json(
         { error: "Solo un administrador aprobado puede editar libros." },
         { status: 403 },
@@ -368,7 +368,7 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const session = await getSessionUser(request);
-    if (!session || session.role !== "admin" || session.approvalStatus !== "approved") {
+    if (!session || session.role !== "admin" || !session.emailVerified || session.approvalStatus !== "approved") {
       return Response.json(
         { error: "Solo un administrador aprobado puede eliminar libros." },
         { status: 403 },
