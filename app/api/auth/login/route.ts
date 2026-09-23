@@ -35,6 +35,7 @@ export async function POST(request: Request) {
         name: users.name,
         role: users.role,
         approvalStatus: users.approvalStatus,
+        emailVerifiedAt: users.emailVerifiedAt,
         email: authCredentials.email,
         description: users.description,
         pagesRead: users.pagesRead,
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
       email: row.email,
       role: row.role as "reader" | "advisor" | "admin",
       approvalStatus: row.approvalStatus as "pending" | "approved" | "rejected",
+      emailVerified: row.emailVerifiedAt !== null,
       description: row.description,
       pagesRead: row.pagesRead,
       photoUrl: row.photoKey
