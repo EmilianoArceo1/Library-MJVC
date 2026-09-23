@@ -131,9 +131,12 @@ export default function ManagementPanel({
   const [registrations, setRegistrations] = useState<RegistrationRequest[]>([]);
   const [bookRequests, setBookRequests] = useState<BookRequest[]>([]);
   const [history, setHistory] = useState<DecisionRecord[]>([]);
+  const [rightsBooks, setRightsBooks] = useState<RightsBook[]>([]);
+  const [copyrightReports, setCopyrightReports] = useState<CopyrightReport[]>([]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [currentUserId, setCurrentUserId] = useState("");
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
+  const [editingRights, setEditingRights] = useState<RightsBook | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [notice, setNotice] = useState("");
@@ -147,6 +150,17 @@ export default function ManagementPanel({
       setRegistrations(Array.isArray(payload.registrations) ? payload.registrations : []);
       setBookRequests(Array.isArray(payload.bookRequests) ? payload.bookRequests : []);
       setHistory(Array.isArray(payload.history) ? payload.history : []);
+
+      const [rightsResponse, reportsResponse] = await Promise.all([
+        fetch("/api/rights", { cache: "no-store" }),
+        fetch("/api/copyright-reports", { cache: "no-store" }),
+      ]);
+      const rightsPayload = await rightsResponse.json();
+      const reportsPayload = await reportsResponse.json();
+      if (!rightsResponse.ok) throw new Error(rightsPayload.error || "No se pudieron cargar los derechos");
+      if (!reportsResponse.ok) throw new Error(reportsPayload.error || "No se pudieron cargar los reportes");
+      setRightsBooks(Array.isArray(rightsPayload.books) ? rightsPayload.books : []);
+      setCopyrightReports(Array.isArray(reportsPayload.reports) ? reportsPayload.reports : []);
 
       if (isAdmin) {
         const usersResponse = await fetch("/api/admin/users", { cache: "no-store" });
