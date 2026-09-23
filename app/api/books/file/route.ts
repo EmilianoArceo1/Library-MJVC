@@ -49,7 +49,7 @@ export async function GET(request: Request) {
       session.approvalStatus === "approved";
     if (
       !isApprovedAdmin &&
-      (book.publicationStatus !== "published" || book.rightsStatus === "review")
+      (book.publicationStatus !== "published" || book.rightsStatus === "review" || book.rightsStatus === "rights_reserved")
     ) {
       return new Response("Este contenido no está disponible para lectura.", {
         status: 403,
