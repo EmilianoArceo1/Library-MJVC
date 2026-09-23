@@ -160,6 +160,9 @@ export default function Home(){
   const readerBook=inspectionBook||owned;
   const inspectionMode=Boolean(inspectionBook);
   const readerLoanId=inspectionMode?null:loanId;
+  useEffect(()=>{
+    if(view!=="lector"&&inspectionBook)setInspectionBook(null);
+  },[view,inspectionBook?.id]);
   const sortedBooks=useMemo(()=>[...books].sort((a,b)=>a.title.localeCompare(b.title,"es",{sensitivity:"base"})),[books]);
   const filtered=useMemo(()=>sortedBooks.filter(b=>(!search||`${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()))&&(!year||String(b.year)===year)&&(!type||b.type===type)),[search,year,type,sortedBooks]);
   const shelfSize=12,shelfCount=Math.max(1,Math.ceil(sortedBooks.length/shelfSize)),visibleBooks=sortedBooks.slice(shelfPage*shelfSize,(shelfPage+1)*shelfSize);
@@ -1076,6 +1079,7 @@ export default function Home(){
     setNotificationUnread(0);
     setLiked([]);
     setProfileReactions([]);
+    setInspectionBook(null);
     setView("biblioteca");
     setModal(null);
     flash("Sesión cerrada");
