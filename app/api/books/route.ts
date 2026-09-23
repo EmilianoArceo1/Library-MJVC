@@ -112,35 +112,40 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!(value instanceof File)) {
+    const hasFile = value instanceof File && value.size > 0;
+    if (!hasFile && rights.status !== "rights_reserved") {
       return Response.json(
         { error: "Selecciona un archivo PDF o TXT." },
         { status: 400 },
       );
     }
 
-    const fallbackType = value.name.toLowerCase().endsWith(".pdf")
-      ? "application/pdf"
-      : value.name.toLowerCase().endsWith(".txt")
-        ? "text/plain"
-        : "";
-    const contentType = ALLOWED_BOOK_TYPES.has(value.type)
-      ? value.type
-      : fallbackType;
-    const extension = ALLOWED_BOOK_TYPES.get(contentType);
+    let contentType = "";
+    if (hasFile) {
+      const file = value as File;
+      const fallbackType = file.name.toLowerCase().endsWith(".pdf")
+        ? "application/pdf"
+        : file.name.toLowerCase().endsWith(".txt")
+          ? "text/plain"
+          : "";
+      contentType = ALLOWED_BOOK_TYPES.has(file.type)
+        ? file.type
+        : fallbackType;
+      const extension = ALLOWED_BOOK_TYPES.get(contentType);
 
-    if (!extension) {
-      return Response.json(
-        { error: "Solo se permiten archivos PDF o TXT." },
-        { status: 400 },
-      );
-    }
+      if (!extension) {
+        return Response.json(
+          { error: "Solo se permiten archivos PDF o TXT." },
+          { status: 400 },
+        );
+      }
 
-    if (value.size <= 0 || value.size > MAX_BOOK_BYTES) {
-      return Response.json(
-        { error: "El archivo debe pesar menos de 25 MB." },
-        { status: 400 },
-      );
+      if (file.size > MAX_BOOK_BYTES) {
+        return Response.json(
+          { error: "El archivo debe pesar menos de 25 MB." },
+          { status: 400 },
+        );
+      }
     }
 
     const safeTitle = title
@@ -151,69 +156,74 @@ export async function POST(request: Request) {
       .slice(0, 70)
       .toLowerCase() || "libro";
 
-    if (!contentPackage) {
-      return Response.json(
-        {
-          error:
-            "No se pudo reconstruir el contenido del libro. Vuelve a seleccionar el archivo antes de guardar.",
-        },
-        { status: 400 },
-      );
-    }
+    if (hasFile) {
+      if (!contentPackage) {
+        return Response.json(
+          {
+            error:
+              "No se pudo reconstruir el contenido del libro. Vuelve a seleccionar el archivo antes de guardar.",
+          },
+          { status: 400 },
+        );
+      }
 
-    if (new TextEncoder().encode(contentPackage).byteLength > MAX_PACKAGE_BYTES) {
-      return Response.json(
-        {
-          error:
-            "La versión reconstruida del libro es demasiado grande. Prueba con un archivo más ligero.",
-        },
-        { status: 400 },
-      );
-    }
+      if (new TextEncoder().encode(contentPackage).byteLength > MAX_PACKAGE_BYTES) {
+        return Response.json(
+          {
+            error:
+              "La versión reconstruida del libro es demasiado grande. Prueba con un archivo más ligero.",
+          },
+          { status: 400 },
+        );
+      }
 
-    let parsedPackage: unknown;
-    try {
-      parsedPackage = JSON.parse(contentPackage);
-    } catch {
-      return Response.json(
-        { error: "El contenido reconstruido del libro no es válido." },
-        { status: 400 },
-      );
-    }
+      let parsedPackage: unknown;
+      try {
+        parsedPackage = JSON.parse(contentPackage);
+      } catch {
+        return Response.json(
+          { error: "El contenido reconstruido del libro no es válido." },
+          { status: 400 },
+        );
+      }
 
-    if (
-      !parsedPackage ||
-      typeof parsedPackage !== "object" ||
-      !Array.isArray((parsedPackage as { pages?: unknown[] }).pages) ||
-      (parsedPackage as { pages: unknown[] }).pages.length !== pages
-    ) {
-      return Response.json(
-        {
-          error:
-            "La cantidad de páginas reconstruidas no coincide con la ficha del libro.",
-        },
-        { status: 400 },
-      );
+      if (
+        !parsedPackage ||
+        typeof parsedPackage !== "object" ||
+        !Array.isArray((parsedPackage as { pages?: unknown[] }).pages) ||
+        (parsedPackage as { pages: unknown[] }).pages.length !== pages
+      ) {
+        return Response.json(
+          {
+            error:
+              "La cantidad de páginas reconstruidas no coincide con la ficha del libro.",
+          },
+          { status: 400 },
+        );
+      }
     }
 
     rightsEvidenceKey = await storeRightsEvidence({ formData, uploadedBy: session.id, subject: "book" });
 
-    uploadedKey = `books/${crypto.randomUUID()}-${safeTitle}.mjvc.json`;
-    const bucket = runtimeEnv().BOOK_FILES;
+    if (hasFile) {
+      const file = value as File;
+      uploadedKey = `books/${crypto.randomUUID()}-${safeTitle}.mjvc.json`;
+      const bucket = runtimeEnv().BOOK_FILES;
 
-    await bucket.put(uploadedKey, contentPackage, {
-      httpMetadata: {
-        contentType: "application/vnd.mjvc.book+json; charset=utf-8",
-        cacheControl: "private, no-store, max-age=0",
-      },
-      customMetadata: {
-        originalName: value.name,
-        originalType: contentType,
-        uploadedBy: session.id,
-        title,
-        reconstruction: "v1",
-      },
-    });
+      await bucket.put(uploadedKey, contentPackage, {
+        httpMetadata: {
+          contentType: "application/vnd.mjvc.book+json; charset=utf-8",
+          cacheControl: "private, no-store, max-age=0",
+        },
+        customMetadata: {
+          originalName: file.name,
+          originalType: contentType,
+          uploadedBy: session.id,
+          title,
+          reconstruction: "v1",
+        },
+      });
+    }
 
     const db = getDb();
     const [created] = await db
@@ -254,6 +264,8 @@ export async function POST(request: Request) {
         rightsStatus: books.rightsStatus,
         rightsHolder: books.rightsHolder,
         rightsSourceUrl: books.rightsSourceUrl,
+        reservedInternalAccess: books.reservedInternalAccess,
+        fileKey: books.fileKey,
       });
 
     return Response.json(
@@ -273,6 +285,9 @@ export async function POST(request: Request) {
           rightsStatus: created.rightsStatus,
           rightsHolder: created.rightsHolder,
           rightsSourceUrl: created.rightsSourceUrl,
+          reservedInternalAccess: Boolean(created.reservedInternalAccess),
+          hasInternalContent: Boolean(created.fileKey),
+          markedRead: false,
           readers: [],
         },
       },

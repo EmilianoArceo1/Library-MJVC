@@ -61,6 +61,11 @@ export function readRightsForm(formData: FormData): RightsForm {
       "Para una obra con derechos reservados, indica al titular o responsable de los derechos.",
     );
   }
+  if (statusRaw === "rights_reserved" && !sourceUrl) {
+    throw new Error(
+      "Para una obra con derechos reservados, añade el enlace legal a la fuente donde debe leerse.",
+    );
+  }
 
   if (
     (statusRaw === "creative_commons" ||
@@ -78,7 +83,7 @@ export function readRightsForm(formData: FormData): RightsForm {
 }
 
 export function rightsCanPublish(status: RightsStatus): boolean {
-  return status !== "review" && status !== "rights_reserved";
+  return status !== "review";
 }
 
 export const RIGHTS_LABELS: Record<RightsStatus, string> = {

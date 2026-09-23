@@ -1,18 +1,21 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
+import { env } from "cloudflare:workers";
 import { getDb } from "../../../db";
 import { books, loans, users } from "../../../db/schema";
 import { computeAllUserPagesRead, computeUniqueCompletedReadCounts, persistUserPagesRead } from "../../reading-stats";
 import { ensureWorkflowSchema } from "../../workflow-server";
 import { privateNoIndexHeaders } from "../../rights-server";
+import { getSessionUser } from "../../auth-server";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await ensureWorkflowSchema();
     const db = getDb();
+    const session = await getSessionUser(request);
 
     const [bookRows, userRows, activeLoanRows, pagesReadByUser, readCounts] =
       await Promise.all([
-        db.select().from(books).where(and(eq(books.publicationStatus, "published"), ne(books.rightsStatus, "review"), ne(books.rightsStatus, "rights_reserved"))).orderBy(books.title),
+        db.select().from(books).where(and(eq(books.publicationStatus, "published"), ne(books.rightsStatus, "review"))).orderBy(books.title),
         db
           .select({
             id: users.id,
@@ -40,6 +43,17 @@ export async function GET() {
       activeLoanRows.map((row) => [row.userId, row.title]),
     );
 
+    const acknowledgementRows = await env.DB.prepare(
+      "SELECT user_id AS userId, book_id AS bookId FROM book_read_acknowledgements",
+    ).all<{ userId: string; bookId: number }>();
+    const reservedReadCounts = new Map<number, number>();
+    const markedByViewer = new Set<number>();
+    for (const row of acknowledgementRows.results) {
+      const bookId = Number(row.bookId);
+      reservedReadCounts.set(bookId, (reservedReadCounts.get(bookId) ?? 0) + 1);
+      if (session && row.userId === session.id) markedByViewer.add(bookId);
+    }
+
     await Promise.all(
       userRows
         .filter(
@@ -63,10 +77,13 @@ export async function GET() {
         rating: book.rating,
         available: book.availableCopies,
         copies: book.totalCopies,
-        reads: readCounts.get(book.id) ?? 0,
+        reads: book.rightsStatus === "rights_reserved" ? (reservedReadCounts.get(book.id) ?? 0) : (readCounts.get(book.id) ?? 0),
         rightsStatus: book.rightsStatus,
         rightsHolder: book.rightsHolder,
         rightsSourceUrl: book.rightsSourceUrl,
+        reservedInternalAccess: Boolean(book.reservedInternalAccess),
+        hasInternalContent: Boolean(book.fileKey),
+        markedRead: markedByViewer.has(book.id),
         readers: [],
       })),
       people: userRows

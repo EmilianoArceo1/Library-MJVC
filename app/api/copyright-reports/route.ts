@@ -197,7 +197,9 @@ export async function PATCH(request: Request) {
         r.reporter_user_id AS reporterUserId,
         r.status,
         b.title AS bookTitle,
-        b.rights_status AS rightsStatus
+        b.rights_status AS rightsStatus,
+        b.rights_source_url AS rightsSourceUrl,
+        b.reserved_internal_access AS reservedInternalAccess
        FROM copyright_reports r
        LEFT JOIN books b ON b.id = r.book_id
        WHERE r.id = ?
@@ -211,6 +213,8 @@ export async function PATCH(request: Request) {
         status: string;
         bookTitle: string | null;
         rightsStatus: string | null;
+        rightsSourceUrl: string | null;
+        reservedInternalAccess: number | null;
       }>();
     if (!row) return Response.json({ error: "Reporte no encontrado." }, { status: 404 });
 
@@ -222,9 +226,19 @@ export async function PATCH(request: Request) {
         .run();
       status = "reviewing";
     } else if (action === "restore") {
-      if (row.rightsStatus === "review" || row.rightsStatus === "rights_reserved") {
+      if (row.rightsStatus === "review") {
         return Response.json(
-          { error: row.rightsStatus === "rights_reserved" ? "No puedes restaurar una obra con derechos reservados sin registrar antes una autorización válida." : "No puedes restaurar un libro con derechos todavía por revisar." },
+          { error: "No puedes restaurar un libro con derechos todavía por revisar." },
+          { status: 409 },
+        );
+      }
+      if (
+        row.rightsStatus === "rights_reserved" &&
+        !row.rightsSourceUrl &&
+        !row.reservedInternalAccess
+      ) {
+        return Response.json(
+          { error: "Esta obra con derechos reservados necesita una fuente legal externa o una habilitación administrativa de lectura interna." },
           { status: 409 },
         );
       }

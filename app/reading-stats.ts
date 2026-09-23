@@ -53,7 +53,7 @@ export async function computeUserPagesRead(userId: string): Promise<number> {
      FROM loans l
      INNER JOIN books b ON b.id = l.book_id
      LEFT JOIN reading_milestones m ON m.loan_id = l.id
-     WHERE l.user_id = ?
+     WHERE l.user_id = ? AND COALESCE(l.stats_eligible, 1) = 1
      GROUP BY l.book_id, b.pages`,
   )
     .bind(userId)
@@ -93,6 +93,7 @@ export async function computeAllUserPagesRead(): Promise<Map<string, number>> {
      FROM loans l
      INNER JOIN books b ON b.id = l.book_id
      LEFT JOIN reading_milestones m ON m.loan_id = l.id
+     WHERE COALESCE(l.stats_eligible, 1) = 1
      GROUP BY l.user_id, l.book_id, b.pages`,
   ).all<AllPageProgressRow>();
 
@@ -109,7 +110,7 @@ export async function computeUniqueCompletedReadCounts(): Promise<Map<number, nu
   const result = await env.DB.prepare(
     `SELECT book_id AS bookId, COUNT(DISTINCT user_id) AS reads
      FROM loans
-     WHERE returned_at IS NOT NULL
+     WHERE returned_at IS NOT NULL AND COALESCE(stats_eligible, 1) = 1
      GROUP BY book_id`,
   ).all<ReadCountRow>();
 
@@ -122,7 +123,7 @@ export async function countUniqueCompletedReads(bookId: number): Promise<number>
   const row = await env.DB.prepare(
     `SELECT COUNT(DISTINCT user_id) AS reads
      FROM loans
-     WHERE book_id = ? AND returned_at IS NOT NULL`,
+     WHERE book_id = ? AND returned_at IS NOT NULL AND COALESCE(stats_eligible, 1) = 1`,
   )
     .bind(bookId)
     .first<{ reads: number }>();

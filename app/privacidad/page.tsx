@@ -26,7 +26,7 @@ export default function PrivacyPage() {
       <article className="legal-document">
         <p className="eyebrow">PRIVACIDAD</p>
         <h1>Política de privacidad</h1>
-        <p className="legal-updated">Última actualización: 22 de septiembre de 2026</p>
+        <p className="legal-updated">Última actualización: 23 de septiembre de 2026</p>
 
         <p className="legal-lead">
           Esta política explica qué información trata la Biblioteca virtual de
@@ -64,7 +64,9 @@ export default function PrivacyPage() {
             </li>
             <li>
               Datos de uso de la biblioteca: préstamos, progreso de lectura,
-              calificaciones, páginas leídas y devoluciones.
+              calificaciones, páginas leídas, devoluciones, devoluciones sin
+              terminar y marcas voluntarias de “leído” para obras consultadas en
+              una fuente externa.
             </li>
             <li>
               Contenido comunitario: publicaciones, respuestas, preguntas,
@@ -166,6 +168,9 @@ export default function PrivacyPage() {
             libros se muestran únicamente a las personas autorizadas y al usuario
             afectado cuando corresponda. La evidencia privada de derechos y los
             datos de reclamaciones se limitan a las personas con permisos de revisión.
+            Las marcas de lectura de obras con derechos reservados se utilizan
+            para habilitar funciones como las reflexiones y para mostrar un conteo
+            agregado de lectores; no generan páginas leídas.
           </p>
         </section>
 

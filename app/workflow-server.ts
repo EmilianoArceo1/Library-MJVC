@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 
 let schemaReady: Promise<void> | null = null;
 
-async function hasColumn(table: "users" | "books" | "book_upload_requests", name: string): Promise<boolean> {
+async function hasColumn(table: "users" | "books" | "book_upload_requests" | "loans", name: string): Promise<boolean> {
   const result = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
   return result.results.some((column) => column.name === name);
 }
@@ -55,6 +55,7 @@ async function buildWorkflowSchema() {
     ["rights_evidence_key", "TEXT"],
     ["rights_verified_at", "INTEGER"],
     ["rights_verified_by", "TEXT"],
+    ["reserved_internal_access", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [column, definition] of bookRightsColumns) {
     if (!(await hasColumn("books", column))) {
@@ -63,6 +64,16 @@ async function buildWorkflowSchema() {
       } catch (error) {
         if (!(await hasColumn("books", column))) throw error;
       }
+    }
+  }
+
+  if (!(await hasColumn("loans", "stats_eligible"))) {
+    try {
+      await env.DB.prepare(
+        "ALTER TABLE loans ADD COLUMN stats_eligible INTEGER NOT NULL DEFAULT 1",
+      ).run();
+    } catch (error) {
+      if (!(await hasColumn("loans", "stats_eligible"))) throw error;
     }
   }
 
@@ -155,6 +166,15 @@ async function buildWorkflowSchema() {
       created_at INTEGER NOT NULL,
       used_at INTEGER
     )`,
+    `CREATE TABLE IF NOT EXISTS book_read_acknowledgements (
+      user_id TEXT NOT NULL,
+      book_id INTEGER NOT NULL,
+      marked_at INTEGER NOT NULL,
+      source TEXT NOT NULL DEFAULT 'external',
+      PRIMARY KEY (user_id, book_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+    )`,
     "CREATE INDEX IF NOT EXISTS idx_account_requests_status ON account_requests(status, requested_at)",
     "CREATE INDEX IF NOT EXISTS idx_book_requests_status ON book_upload_requests(status, requested_at)",
     "CREATE INDEX IF NOT EXISTS idx_request_decisions_subject ON request_decisions(request_type, request_id, created_at)",
@@ -162,6 +182,7 @@ async function buildWorkflowSchema() {
     "CREATE INDEX IF NOT EXISTS idx_copyright_reports_status ON copyright_reports(status, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_copyright_reports_book ON copyright_reports(book_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_email_verification_user ON email_verification_tokens(user_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_book_read_ack_book ON book_read_acknowledgements(book_id, marked_at)",
   ];
 
   for (const sql of statements) {
@@ -187,8 +208,19 @@ async function buildWorkflowSchema() {
   }
 
   await env.DB.prepare(
-    "UPDATE books SET publication_status = 'hidden' WHERE rights_status IN ('review', 'rights_reserved')",
+    "UPDATE books SET publication_status = 'hidden' WHERE rights_status = 'review'",
   ).run();
+  await env.DB.prepare(
+    `UPDATE books
+     SET publication_status = 'published',
+         rights_verified_at = COALESCE(rights_verified_at, ?),
+         rights_verified_by = COALESCE(NULLIF(rights_verified_by, ''), 'Migración: enlace externo')
+     WHERE rights_status = 'rights_reserved'
+       AND rights_source_url <> ''
+       AND rights_verified_at IS NULL`,
+  )
+    .bind(Date.now())
+    .run();
 
   await env.DB.prepare(
     "UPDATE users SET approval_status = 'approved' WHERE approval_status IS NULL OR approval_status = ''",

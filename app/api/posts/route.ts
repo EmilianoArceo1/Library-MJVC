@@ -1,7 +1,9 @@
 import { desc, eq } from "drizzle-orm";
+import { env } from "cloudflare:workers";
 import { getDb } from "../../../db";
-import { posts, users } from "../../../db/schema";
+import { books, posts, users } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
+import { ensureWorkflowSchema } from "../../workflow-server";
 
 type StoredForumBody = {
   text: string;
@@ -119,13 +121,16 @@ export async function POST(request: Request) {
       );
     }
 
+    await ensureWorkflowSchema();
     const payload = (await request.json()) as {
       text?: string;
       book?: string;
+      bookId?: number;
     };
 
     const text = payload.text?.trim() ?? "";
-    const book = payload.book?.trim() ?? "";
+    const requestedBook = payload.book?.trim() ?? "";
+    const bookId = Number(payload.bookId);
 
     if (!text) {
       return Response.json(
@@ -134,12 +139,47 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!book) {
+    if (!requestedBook || !Number.isInteger(bookId) || bookId < 1) {
       return Response.json(
         { error: "Selecciona el libro relacionado." },
         { status: 400 },
       );
     }
+
+    const db = getDb();
+    const [bookRow] = await db
+      .select({
+        id: books.id,
+        title: books.title,
+        rightsStatus: books.rightsStatus,
+        publicationStatus: books.publicationStatus,
+      })
+      .from(books)
+      .where(eq(books.id, bookId))
+      .limit(1);
+
+    if (!bookRow || bookRow.publicationStatus !== "published") {
+      return Response.json(
+        { error: "Ese libro no está disponible en el estante." },
+        { status: 404 },
+      );
+    }
+
+    if (bookRow.rightsStatus === "rights_reserved") {
+      const acknowledgement = await env.DB.prepare(
+        "SELECT 1 AS ok FROM book_read_acknowledgements WHERE user_id = ? AND book_id = ? LIMIT 1",
+      )
+        .bind(identity.id, bookId)
+        .first<{ ok: number }>();
+      if (!acknowledgement) {
+        return Response.json(
+          { error: "Marca esta obra con derechos reservados como leída antes de publicar una reflexión sobre ella." },
+          { status: 403 },
+        );
+      }
+    }
+
+    const book = bookRow.title;
 
     if (text.length > 5000) {
       return Response.json(
@@ -148,12 +188,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const db = getDb();
     const createdAt = new Date();
     const [created] = await db
       .insert(posts)
       .values({
-        bookId: null,
+        bookId,
         userId: identity.id,
         body: JSON.stringify({ text, book }),
         createdAt,
