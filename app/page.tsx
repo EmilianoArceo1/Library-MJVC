@@ -8,7 +8,7 @@ import BookLogo from "./components/BookLogo";
 type View = "biblioteca" | "comunidad" | "foro" | "subir" | "lector" | "gestion" | "notificaciones";
 type ReaderMode = "book" | "continuous";
 type Theme = "light" | "dark";
-type Book = { id:number; title:string; author:string; year:number; pages:number; type:string; color:string; cover:string; synopsis:string; rating:number; available:number; copies:number; reads:number; readers:string[]; progress?:number };
+type Book = { id:number; title:string; author:string; year:number; pages:number; type:string; color:string; cover:string; synopsis:string; rating:number; available:number; copies:number; reads:number; readers:string[]; progress?:number; publicationStatus?:"published"|"hidden"; rightsStatus?:"own_work"|"public_domain"|"creative_commons"|"permission"|"official_source"|"review"; rightsHolder?:string; rightsSourceUrl?:string; rightsPermissionBy?:string; rightsNotes?:string; rightsEvidenceAvailable?:boolean };
 type Reader = { id:string; name:string; pages:number; role:"reader"|"advisor"|"admin"; now:string|null; color:string; photoUrl:string|null };
 type ForumPost = { id:number; user:string; book:string; time:string; text:string; likes:number; replies:number; color:string; photoUrl?:string|null };
 type SessionUser = { id:string; name:string; email:string; role:"reader"|"advisor"|"admin"; approvalStatus:"pending"|"approved"|"rejected"; emailVerified:boolean; description:string; pagesRead:number; photoUrl:string|null };
@@ -44,6 +44,15 @@ const BOOK_TYPES=[
   "Álbum ilustrado",
   "Otro",
 ] as const;
+const RIGHTS_OPTIONS=[
+  ["own_work","Obra propia"],
+  ["public_domain","Dominio público"],
+  ["creative_commons","Creative Commons"],
+  ["permission","Permiso del titular"],
+  ["official_source","Fuente oficial con permiso de reproducción"],
+  ["review","Situación por revisar"],
+] as const;
+const rightsLabel=(status?:string)=>RIGHTS_OPTIONS.find(([value])=>value===status)?.[1]||"Por revisar";
 
 const initialPosts: ForumPost[] = [];
 
