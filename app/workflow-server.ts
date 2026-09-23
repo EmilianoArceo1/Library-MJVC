@@ -168,6 +168,28 @@ async function buildWorkflowSchema() {
     await env.DB.prepare(sql).run();
   }
 
+  const requestRightsColumns: Array<[string, string]> = [
+    ["rights_status", "TEXT NOT NULL DEFAULT 'review'"],
+    ["rights_holder", "TEXT NOT NULL DEFAULT ''"],
+    ["rights_source_url", "TEXT NOT NULL DEFAULT ''"],
+    ["rights_permission_by", "TEXT NOT NULL DEFAULT ''"],
+    ["rights_notes", "TEXT NOT NULL DEFAULT ''"],
+    ["rights_evidence_key", "TEXT"],
+  ];
+  for (const [column, definition] of requestRightsColumns) {
+    if (!(await hasColumn("book_upload_requests", column))) {
+      try {
+        await env.DB.prepare(`ALTER TABLE book_upload_requests ADD COLUMN ${column} ${definition}`).run();
+      } catch (error) {
+        if (!(await hasColumn("book_upload_requests", column))) throw error;
+      }
+    }
+  }
+
+  await env.DB.prepare(
+    "UPDATE books SET publication_status = 'hidden' WHERE rights_status = 'review'",
+  ).run();
+
   await env.DB.prepare(
     "UPDATE users SET approval_status = 'approved' WHERE approval_status IS NULL OR approval_status = ''",
   ).run();
