@@ -112,7 +112,7 @@ export async function POST(request: Request) {
         { status: 401 },
       );
     }
-    if (identity.approvalStatus !== "approved") {
+    if (!identity.emailVerified || identity.approvalStatus !== "approved") {
       return Response.json(
         { error: "Tu cuenta debe estar aprobada para publicar." },
         { status: 403 },
