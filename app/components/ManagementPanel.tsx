@@ -77,6 +77,8 @@ type RightsBook = {
   rightsPermissionBy: string;
   rightsNotes: string;
   rightsEvidenceAvailable: boolean;
+  reservedInternalAccess: boolean;
+  hasInternalContent: boolean;
   rightsVerifiedAt?: number | null;
   rightsVerifiedBy?: string | null;
 };
@@ -286,6 +288,7 @@ export default function ManagementPanel({
           rightsPermissionBy: String(form.get("rightsPermissionBy") || ""),
           rightsNotes: String(form.get("rightsNotes") || ""),
           publish: form.get("publish") === "on",
+          reservedInternalAccess: form.get("reservedInternalAccess") === "on",
         }),
       });
       const payload = await response.json();
@@ -435,7 +438,7 @@ export default function ManagementPanel({
         </button>
         <button className={tab === "rights" ? "active" : ""} onClick={() => setTab("rights")}>
           Derechos
-          <span>{rightsBooks.filter((book) => book.rightsStatus === "review" || book.rightsStatus === "rights_reserved").length + copyrightReports.filter((report) => report.status === "pending" || report.status === "reviewing").length}</span>
+          <span>{rightsBooks.filter((book) => book.rightsStatus === "review").length + copyrightReports.filter((report) => report.status === "pending" || report.status === "reviewing").length}</span>
         </button>
         {isAdmin && (
           <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
@@ -524,7 +527,8 @@ export default function ManagementPanel({
                     {request.rightsPermissionBy && <span>Permiso: {request.rightsPermissionBy}</span>}
                     {request.rightsNotes && <p>{request.rightsNotes}</p>}
                     {request.rightsEvidenceAvailable && <a href={`/api/rights/evidence?requestId=${request.id}`} target="_blank" rel="noreferrer">Ver evidencia privada ↗</a>}
-                    {(request.rightsStatus === "review" || request.rightsStatus === "rights_reserved") && <b className="rights-warning">{request.rightsStatus === "rights_reserved" ? "Derechos reservados: requiere una base de autorización antes de publicar." : "No puede aprobarse hasta resolver los derechos."}</b>}
+                    {request.rightsStatus === "review" && <b className="rights-warning">No puede aprobarse hasta resolver los derechos.</b>}
+                    {request.rightsStatus === "rights_reserved" && !request.rightsSourceUrl && <b className="rights-warning">Añade el enlace legal a la fuente antes de aprobar esta obra.</b>}
                   </div>
                   <small>
                     Propuesto por {request.requesterName} · {request.originalName}
@@ -540,7 +544,7 @@ export default function ManagementPanel({
                     </button>
                     <button
                       className="primary"
-                      disabled={Boolean(busyKey) || request.rightsStatus === "review" || request.rightsStatus === "rights_reserved"}
+                      disabled={Boolean(busyKey) || request.rightsStatus === "review" || (request.rightsStatus === "rights_reserved" && !request.rightsSourceUrl)}
                       onClick={() => decide("book", request.id, "approved", `“${request.title}”`)}
                     >
                       Aprobar
@@ -623,6 +627,9 @@ export default function ManagementPanel({
                     <div className="rights-summary">
                       <b>{rightsLabel(book.rightsStatus)}</b>
                       {book.rightsHolder && <span>Titular: {book.rightsHolder}</span>}
+                      {book.rightsStatus === "rights_reserved" && (
+                        <span>{book.reservedInternalAccess ? "Lectura interna habilitada por administración" : "Lectura por fuente externa"}</span>
+                      )}
                       {book.rightsVerifiedBy && (
                         <span>
                           Revisado por {book.rightsVerifiedBy}
@@ -802,7 +809,7 @@ export default function ManagementPanel({
               </a>
             )}
             <small className="rights-modal-help">
-              Si queda “Situación por revisar” o “Derechos reservados”, la propuesta no podrá aprobarse. Para una obra protegida, registra después una base válida como “Permiso del titular” antes de publicarla.
+              “Situación por revisar” bloquea la aprobación. Una obra con “Derechos reservados” sí puede aprobarse como ficha externa cuando tenga un enlace legal a su fuente; la lectura interna solo puede habilitarla después un administrador.
             </small>
             <button className="primary wide" disabled={Boolean(busyKey)}>
               {busyKey.startsWith("request-rights:") ? "Guardando…" : "Guardar revisión"}
@@ -849,9 +856,20 @@ export default function ManagementPanel({
             )}
             <label className="rights-publish-check">
               <input type="checkbox" name="publish" defaultChecked={editingRights.publicationStatus === "published"} />
-              <span>Publicar el libro si la situación de derechos permite hacerlo</span>
+              <span>Mostrar este título en el estante</span>
             </label>
-            <small className="rights-modal-help">Si eliges “Situación por revisar” o “Derechos reservados”, el servidor mantendrá el libro oculto aunque marques publicar.</small>
+            <label className="rights-publish-check rights-risk-check">
+              <input
+                type="checkbox"
+                name="reservedInternalAccess"
+                defaultChecked={editingRights.reservedInternalAccess}
+                disabled={editingRights.rightsStatus !== "rights_reserved" || !editingRights.hasInternalContent}
+              />
+              <span>Si es una obra con derechos reservados, permitir también lectura interna alojada en Biblioteca Jornadas bajo decisión administrativa.</span>
+            </label>
+            <small className="rights-modal-help">
+              Por defecto, una obra con derechos reservados abre únicamente su fuente legal externa y nunca suma páginas leídas. Activar lectura interna es una decisión explícita del administrador y solo está disponible cuando existe un archivo interno.
+            </small>
             <button className="primary wide" disabled={Boolean(busyKey)}>
               {busyKey.startsWith("rights:") ? "Guardando…" : "Guardar revisión"}
             </button>
