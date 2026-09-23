@@ -97,6 +97,7 @@ export default function PublicHomepage() {
         <nav>
           <Link href="/privacidad">Política de privacidad</Link>
           <Link href="/terminos">Términos de uso</Link>
+          <Link href="/derechos-de-autor">Derechos de autor</Link>
           <a href="mailto:biblioteca.jornadas@gmail.com">Contacto</a>
         </nav>
       </footer>
