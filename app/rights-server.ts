@@ -5,6 +5,7 @@ export const RIGHTS_STATUSES = [
   "public_domain",
   "creative_commons",
   "permission",
+  "rights_reserved",
   "official_source",
   "review",
 ] as const;
@@ -55,6 +56,12 @@ export function readRightsForm(formData: FormData): RightsForm {
     );
   }
 
+  if (statusRaw === "rights_reserved" && !holder) {
+    throw new Error(
+      "Para una obra con derechos reservados, indica al titular o responsable de los derechos.",
+    );
+  }
+
   if (
     (statusRaw === "creative_commons" ||
       statusRaw === "official_source" ||
@@ -71,7 +78,7 @@ export function readRightsForm(formData: FormData): RightsForm {
 }
 
 export function rightsCanPublish(status: RightsStatus): boolean {
-  return status !== "review";
+  return status !== "review" && status !== "rights_reserved";
 }
 
 export const RIGHTS_LABELS: Record<RightsStatus, string> = {
@@ -79,6 +86,7 @@ export const RIGHTS_LABELS: Record<RightsStatus, string> = {
   public_domain: "Dominio público",
   creative_commons: "Creative Commons",
   permission: "Permiso del titular",
+  rights_reserved: "Derechos reservados",
   official_source: "Fuente oficial con permiso",
   review: "Situación por revisar",
 };
