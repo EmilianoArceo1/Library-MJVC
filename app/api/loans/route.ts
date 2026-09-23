@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { answers, books, loans, questions } from "../../../db/schema";
@@ -116,6 +117,19 @@ export async function POST(request: Request) {
 
     if (!book) {
       return Response.json({ error: "Ese libro ya no existe." }, { status: 404 });
+    }
+
+    const moderatedRequest = await env.DB.prepare(
+      "SELECT status FROM book_upload_requests WHERE created_book_id = ? ORDER BY id DESC LIMIT 1",
+    )
+      .bind(bookId)
+      .first<{ status: string }>()
+      .catch(() => null);
+    if (moderatedRequest?.status === "rejected") {
+      return Response.json(
+        { error: "Este libro fue retirado de la colección durante una reevaluación." },
+        { status: 409 },
+      );
     }
 
     if (book.availableCopies < 1) {
