@@ -77,7 +77,13 @@ export async function GET(request: Request) {
           requested_at AS requestedAt,
           updated_at AS updatedAt,
           last_decision_by AS lastDecisionBy,
-          last_decision_at AS lastDecisionAt
+          last_decision_at AS lastDecisionAt,
+          rights_status AS rightsStatus,
+          rights_holder AS rightsHolder,
+          rights_source_url AS rightsSourceUrl,
+          rights_permission_by AS rightsPermissionBy,
+          rights_notes AS rightsNotes,
+          CASE WHEN rights_evidence_key IS NULL THEN 0 ELSE 1 END AS rightsEvidenceAvailable
          FROM book_upload_requests
          ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, updated_at DESC`,
       ).all(),
@@ -238,7 +244,13 @@ export async function PATCH(request: Request) {
         copies,
         file_key AS fileKey,
         status,
-        created_book_id AS createdBookId
+        created_book_id AS createdBookId,
+        rights_status AS rightsStatus,
+        rights_holder AS rightsHolder,
+        rights_source_url AS rightsSourceUrl,
+        rights_permission_by AS rightsPermissionBy,
+        rights_notes AS rightsNotes,
+        rights_evidence_key AS rightsEvidenceKey
        FROM book_upload_requests
        WHERE id = ?
        LIMIT 1`,
@@ -258,6 +270,12 @@ export async function PATCH(request: Request) {
         fileKey: string;
         status: string;
         createdBookId: number | null;
+        rightsStatus: string;
+        rightsHolder: string;
+        rightsSourceUrl: string;
+        rightsPermissionBy: string;
+        rightsNotes: string;
+        rightsEvidenceKey: string | null;
       }>();
 
     if (!requestRow) {
@@ -266,6 +284,12 @@ export async function PATCH(request: Request) {
     if (requestRow.userId === session.id) {
       return Response.json(
         { error: "No puedes dictaminar tu propia propuesta de libro." },
+        { status: 409 },
+      );
+    }
+    if (decision === "approved" && requestRow.rightsStatus === "review") {
+      return Response.json(
+        { error: "No se puede aprobar este libro mientras su situación de derechos esté por revisar." },
         { status: 409 },
       );
     }
@@ -295,6 +319,15 @@ export async function PATCH(request: Request) {
           availableCopies: requestRow.copies,
           fileKey: requestRow.fileKey,
           rating: 0,
+          publicationStatus: decision === "approved" ? "published" : "hidden",
+          rightsStatus: requestRow.rightsStatus as any,
+          rightsHolder: requestRow.rightsHolder,
+          rightsSourceUrl: requestRow.rightsSourceUrl,
+          rightsPermissionBy: requestRow.rightsPermissionBy,
+          rightsNotes: requestRow.rightsNotes,
+          rightsEvidenceKey: requestRow.rightsEvidenceKey,
+          rightsVerifiedAt: decision === "approved" ? now : null,
+          rightsVerifiedBy: decision === "approved" ? session.name : null,
         })
         .returning({ id: books.id });
 
@@ -304,7 +337,17 @@ export async function PATCH(request: Request) {
     if (createdBookId) {
       await db
         .update(books)
-        .set({ publicationStatus: decision === "approved" ? "published" : "hidden" })
+.set({
+          publicationStatus: decision === "approved" ? "published" : "hidden",
+          rightsStatus: requestRow.rightsStatus as any,
+          rightsHolder: requestRow.rightsHolder,
+          rightsSourceUrl: requestRow.rightsSourceUrl,
+          rightsPermissionBy: requestRow.rightsPermissionBy,
+          rightsNotes: requestRow.rightsNotes,
+          rightsEvidenceKey: requestRow.rightsEvidenceKey,
+          rightsVerifiedAt: decision === "approved" ? now : null,
+          rightsVerifiedBy: decision === "approved" ? session.name : null,
+        })
         .where(eq(books.id, createdBookId));
     }
 
