@@ -170,10 +170,13 @@ export default function Home(){
     return ()=>{cancelled=true;window.clearInterval(timer)};
   },[currentUser?.id]);
   useEffect(()=>{
-    if(currentUser&&currentUser.approvalStatus!=="approved"&&(view==="gestion"||view==="subir")){
-      setView("notificaciones");
+    if(!currentUser)return;
+    if(view==="gestion"&&(!isApproved||!isModerator)){
+      setView(isApproved?"biblioteca":"notificaciones");
+      return;
     }
-  },[currentUser?.approvalStatus,view]);
+    if(view==="subir"&&!isApproved)setView("notificaciones");
+  },[currentUser?.approvalStatus,currentUser?.role,view,isApproved,isModerator]);
   useEffect(()=>{
     const root=document.documentElement;
     root.dataset.theme=theme;
