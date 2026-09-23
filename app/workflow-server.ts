@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 
 let schemaReady: Promise<void> | null = null;
 
-async function hasColumn(table: "users" | "books", name: string): Promise<boolean> {
+async function hasColumn(table: "users" | "books" | "book_upload_requests", name: string): Promise<boolean> {
   const result = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
   return result.results.some((column) => column.name === name);
 }
@@ -44,6 +44,26 @@ async function buildWorkflowSchema() {
     )
       .bind(Date.now())
       .run();
+  }
+
+  const bookRightsColumns: Array<[string, string]> = [
+    ["rights_status", "TEXT NOT NULL DEFAULT 'review'"],
+    ["rights_holder", "TEXT NOT NULL DEFAULT ''"],
+    ["rights_source_url", "TEXT NOT NULL DEFAULT ''"],
+    ["rights_permission_by", "TEXT NOT NULL DEFAULT ''"],
+    ["rights_notes", "TEXT NOT NULL DEFAULT ''"],
+    ["rights_evidence_key", "TEXT"],
+    ["rights_verified_at", "INTEGER"],
+    ["rights_verified_by", "TEXT"],
+  ];
+  for (const [column, definition] of bookRightsColumns) {
+    if (!(await hasColumn("books", column))) {
+      try {
+        await env.DB.prepare(\`ALTER TABLE books ADD COLUMN \${column} \${definition}\`).run();
+      } catch (error) {
+        if (!(await hasColumn("books", column))) throw error;
+      }
+    }
   }
 
   const statements = [
