@@ -580,7 +580,7 @@ export default function Home(){
   };
   useEffect(()=>{
     let cancelled=false;
-    if(view!=="lector"||!owned)return ()=>{cancelled=true};
+    if(view!=="lector"||!readerBook)return ()=>{cancelled=true};
     setReaderLoading(true);
     setReaderError("");
     setReaderPages([]);
@@ -590,7 +590,7 @@ export default function Home(){
     setReaderPendingPage(null);
     setReaderAnimating(false);
     readerFinishShownRef.current=false;
-    fetch(`/api/books/file?id=${owned.id}`)
+    fetch(`/api/books/file?id=${readerBook.id}${inspectionMode?"&inspect=1":""}`)
       .then(async response=>{
         if(!response.ok)throw new Error(await response.text()||"No se pudo abrir el libro");
         const contentType=response.headers.get("content-type")||"";
@@ -606,22 +606,27 @@ export default function Home(){
         if(cancelled)return;
         setReaderPages(reconstructed.pages);
         setReaderTotalPages(reconstructed.pages.length);
-        setReaderPage(spreadFromProgress(owned.progress||0,reconstructed.pages.length));
+        setReaderPage(spreadFromProgress(readerBook.progress||0,reconstructed.pages.length));
       })
       .catch(error=>{if(!cancelled)setReaderError(error instanceof Error?error.message:"No se pudo abrir el libro.")})
       .finally(()=>{if(!cancelled)setReaderLoading(false)});
     return ()=>{cancelled=true};
-  },[view,owned?.id]);
+  },[view,readerBook?.id,inspectionMode]);
   useEffect(()=>{
-    if(view!=="lector"||readerMode!=="book"||!loanId||readerTotalPages<1)return;
+    if(view!=="lector"||readerMode!=="book"||readerTotalPages<1)return;
     const lastVisible=readerPage===0?0:Math.min(readerTotalPages,readerPage+1);
     const progress=lastVisible===0?0:Math.round((lastVisible/readerTotalPages)*100);
+    if(inspectionMode){
+      setInspectionBook(current=>current?{...current,progress}:current);
+      return;
+    }
     setOwned(current=>current?{...current,progress}:current);
+    if(!readerLoanId)return;
     const timer=setTimeout(()=>{
-      fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress})}).then(async response=>{const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar el progreso");syncLocalPagesRead(payload.pagesRead)}).catch(error=>console.error("No se pudo guardar el progreso",error));
+      fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId:readerLoanId,action:"progress",progress})}).then(async response=>{const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar el progreso");syncLocalPagesRead(payload.pagesRead)}).catch(error=>console.error("No se pudo guardar el progreso",error));
     },450);
     return ()=>clearTimeout(timer);
-  },[view,readerMode,loanId,readerPage,readerTotalPages]);
+  },[view,readerMode,readerLoanId,readerPage,readerTotalPages,inspectionMode]);
   const lastSpreadStart=readerTotalPages<1?0:(readerTotalPages%2===0?Math.max(1,readerTotalPages-1):readerTotalPages);
   const backCoverPage=readerTotalPages+1;
   const startReaderTurn=(direction:"next"|"prev")=>{
@@ -682,7 +687,7 @@ export default function Home(){
   const switchReaderMode=(mode:ReaderMode)=>{
     if(mode===readerMode)return;
     if(mode==="book"){
-      setReaderPage(spreadFromProgress(owned?.progress||0,readerTotalPages));
+      setReaderPage(spreadFromProgress(readerBook?.progress||0,readerTotalPages));
       setReaderReturnVisible(false);
       setReaderClosing(false);
       readerFinishShownRef.current=false;
@@ -692,11 +697,12 @@ export default function Home(){
   const changeContinuousFont=(delta:number)=>setContinuousFontSize(current=>Math.min(42,Math.max(18,current+delta)));
   const saveContinuousProgress=(progress:number)=>{
     const safeProgress=Math.max(0,Math.min(100,Math.round(progress)));
-    setOwned(current=>current?{...current,progress:safeProgress}:current);
+    if(inspectionMode)setInspectionBook(current=>current?{...current,progress:safeProgress}:current);
+    else setOwned(current=>current?{...current,progress:safeProgress}:current);
     if(continuousProgressTimerRef.current!==null)window.clearTimeout(continuousProgressTimerRef.current);
+    if(!readerLoanId)return;
     continuousProgressTimerRef.current=window.setTimeout(()=>{
-      if(!loanId)return;
-      fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId,action:"progress",progress:safeProgress})}).then(async response=>{const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar el progreso continuo");syncLocalPagesRead(payload.pagesRead)}).catch(error=>console.error("No se pudo guardar el progreso continuo",error));
+      fetch("/api/loans",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({loanId:readerLoanId,action:"progress",progress:safeProgress})}).then(async response=>{const payload=await response.json();if(!response.ok)throw new Error(payload.error||"No se pudo guardar el progreso continuo");syncLocalPagesRead(payload.pagesRead)}).catch(error=>console.error("No se pudo guardar el progreso continuo",error));
       continuousProgressTimerRef.current=null;
     },500);
   };
@@ -715,13 +721,13 @@ export default function Home(){
     if(view!=="lector"||readerMode!=="continuous"||readerLoading||readerPages.length===0)return;
     const node=readerContinuousRef.current;
     if(!node)return;
-    const progress=owned?.progress||0;
+    const progress=readerBook?.progress||0;
     const frame=requestAnimationFrame(()=>{
       const max=node.scrollHeight-node.clientHeight;
       node.scrollTop=max>0?max*(progress/100):0;
     });
     return ()=>cancelAnimationFrame(frame);
-  },[view,readerMode,readerLoading,readerPages.length,owned?.id]);
+  },[view,readerMode,readerLoading,readerPages.length,readerBook?.id]);
   useEffect(()=>()=>{if(continuousProgressTimerRef.current!==null)window.clearTimeout(continuousProgressTimerRef.current)},[]);
   const changeReaderZoom=(delta:number)=>setReaderZoom(current=>Math.min(2,Math.max(.7,Math.round((current+delta)*10)/10)));
   const clampReaderZoom=(value:number)=>Math.min(2,Math.max(.7,Math.round(value*20)/20));
