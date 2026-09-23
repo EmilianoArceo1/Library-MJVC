@@ -143,8 +143,6 @@ export async function POST(request: Request) {
       );
     }
 
-    rightsEvidenceKey = await storeRightsEvidence({ formData, uploadedBy: session.id, subject: "book" });
-
     const safeTitle = title
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
@@ -197,6 +195,8 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
+    rightsEvidenceKey = await storeRightsEvidence({ formData, uploadedBy: session.id, subject: "book" });
 
     uploadedKey = `books/${crypto.randomUUID()}-${safeTitle}.mjvc.json`;
     const bucket = runtimeEnv().BOOK_FILES;
@@ -293,6 +293,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    await ensureWorkflowSchema();
     const session = await getSessionUser(request);
     if (!session || session.role !== "admin" || !session.emailVerified || session.approvalStatus !== "approved") {
       return Response.json(
@@ -460,6 +461,7 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    await ensureWorkflowSchema();
     const session = await getSessionUser(request);
     if (!session || session.role !== "admin" || !session.emailVerified || session.approvalStatus !== "approved") {
       return Response.json(
@@ -479,6 +481,7 @@ export async function DELETE(request: Request) {
       .select({
         id: books.id,
         fileKey: books.fileKey,
+        rightsEvidenceKey: books.rightsEvidenceKey,
       })
       .from(books)
       .where(eq(books.id, id))
@@ -521,6 +524,7 @@ export async function DELETE(request: Request) {
     if (book.fileKey) {
       await runtimeEnv().BOOK_FILES.delete(book.fileKey).catch(() => undefined);
     }
+    await deleteRightsEvidence(book.rightsEvidenceKey);
 
     return Response.json({ ok: true });
   } catch (error) {
