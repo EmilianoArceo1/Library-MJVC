@@ -26,7 +26,7 @@ export default function TermsPage() {
       <article className="legal-document">
         <p className="eyebrow">CONDICIONES DEL SERVICIO</p>
         <h1>Términos de uso</h1>
-        <p className="legal-updated">Última actualización: 22 de septiembre de 2026</p>
+        <p className="legal-updated">Última actualización: 23 de septiembre de 2026</p>
 
         <p className="legal-lead">
           Estos términos regulan el uso de Biblioteca Jornadas. Al crear o utilizar
@@ -85,17 +85,21 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2>5. Libros y materiales enviados</h2>
+          <h2>5. Libros, fuentes externas y materiales enviados</h2>
           <p>
-            Quien proponga o suba un material declara que cuenta con autorización
-            suficiente para compartirlo dentro de la plataforma o que su uso es
-            legítimo para la finalidad de la biblioteca. La administración puede
-            aprobar, rechazar, reevaluar u ocultar materiales.
+            Quien proponga o suba un material debe proporcionar información
+            razonable sobre su situación de derechos. La administración puede
+            aprobar, rechazar, reevaluar, ocultar o cambiar la modalidad de acceso
+            de un material.
           </p>
           <p>
-            La presencia de un libro en la plataforma no implica que Biblioteca
-            Jornadas reclame propiedad intelectual sobre la obra. Los derechos
-            corresponden a sus autores y titulares respectivos.
+            Las obras clasificadas como “Derechos reservados” pueden aparecer
+            únicamente como ficha bibliográfica con un enlace hacia una fuente
+            externa para su lectura. Si una copia interna existe, solo una persona
+            administradora puede habilitar expresamente ese acceso. La presencia
+            de un libro en la plataforma no implica que Biblioteca Jornadas
+            reclame propiedad intelectual ni que su clasificación constituya una
+            autorización del titular.
           </p>
         </section>
 
@@ -110,12 +114,19 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2>7. Moderación</h2>
+          <h2>7. Moderación, inspección y devoluciones</h2>
           <p>
             Administradores y asesores pueden revisar solicitudes de registro y
             propuestas de libros. Las decisiones pueden reevaluarse y el sistema
             conserva un historial de quién emitió cada dictamen para dar
             trazabilidad al proceso.
+          </p>
+          <p>
+            Administradores y asesores pueden inspeccionar un libro sin crear un
+            préstamo ni generar estadísticas de lectura. Cualquier lector puede
+            devolver anticipadamente un préstamo sin responder preguntas ni
+            calificarlo; en ese caso, el progreso de ese préstamo no se incluye
+            en las páginas leídas.
           </p>
           <p>
             La administración puede restringir o eliminar cuentas o contenido
