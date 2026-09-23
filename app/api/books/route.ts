@@ -264,6 +264,8 @@ export async function POST(request: Request) {
         rightsStatus: books.rightsStatus,
         rightsHolder: books.rightsHolder,
         rightsSourceUrl: books.rightsSourceUrl,
+        reservedInternalAccess: books.reservedInternalAccess,
+        fileKey: books.fileKey,
       });
 
     return Response.json(
@@ -283,6 +285,9 @@ export async function POST(request: Request) {
           rightsStatus: created.rightsStatus,
           rightsHolder: created.rightsHolder,
           rightsSourceUrl: created.rightsSourceUrl,
+          reservedInternalAccess: Boolean(created.reservedInternalAccess),
+          hasInternalContent: Boolean(created.fileKey),
+          markedRead: false,
           readers: [],
         },
       },
