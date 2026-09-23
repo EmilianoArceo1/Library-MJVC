@@ -287,9 +287,19 @@ export async function PATCH(request: Request) {
         { status: 409 },
       );
     }
-    if (decision === "approved" && (requestRow.rightsStatus === "review" || requestRow.rightsStatus === "rights_reserved")) {
+    if (decision === "approved" && requestRow.rightsStatus === "review") {
       return Response.json(
-        { error: requestRow.rightsStatus === "rights_reserved" ? "No se puede aprobar una obra con derechos reservados sin registrar antes una autorización válida." : "No se puede aprobar este libro mientras su situación de derechos esté por revisar." },
+        { error: "No se puede aprobar este libro mientras su situación de derechos esté por revisar." },
+        { status: 409 },
+      );
+    }
+    if (
+      decision === "approved" &&
+      requestRow.rightsStatus === "rights_reserved" &&
+      !requestRow.rightsSourceUrl
+    ) {
+      return Response.json(
+        { error: "Añade primero el enlace legal a la fuente de esta obra con derechos reservados." },
         { status: 409 },
       );
     }
@@ -328,6 +338,7 @@ export async function PATCH(request: Request) {
           rightsEvidenceKey: requestRow.rightsEvidenceKey,
           rightsVerifiedAt: decision === "approved" ? now : null,
           rightsVerifiedBy: decision === "approved" ? session.name : null,
+          reservedInternalAccess: 0,
         })
         .returning({ id: books.id });
 
@@ -347,6 +358,7 @@ export async function PATCH(request: Request) {
           rightsEvidenceKey: requestRow.rightsEvidenceKey,
           rightsVerifiedAt: decision === "approved" ? now : null,
           rightsVerifiedBy: decision === "approved" ? session.name : null,
+          reservedInternalAccess: requestRow.rightsStatus === "rights_reserved" ? 0 : undefined,
         })
         .where(eq(books.id, createdBookId));
     }
