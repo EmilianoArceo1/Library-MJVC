@@ -137,6 +137,7 @@ export default function ManagementPanel({
   const [currentUserId, setCurrentUserId] = useState("");
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [editingRights, setEditingRights] = useState<RightsBook | null>(null);
+  const [editingRequestRights, setEditingRequestRights] = useState<BookRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [notice, setNotice] = useState("");
@@ -232,6 +233,36 @@ export default function ManagementPanel({
       onCatalogChanged?.();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "No se pudo guardar la decisión.");
+    } finally {
+      setBusyKey("");
+    }
+  };
+
+  const saveRequestRights = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingRequestRights) return;
+    const form = new FormData(event.currentTarget);
+    setBusyKey(`request-rights:${editingRequestRights.id}`);
+    try {
+      const response = await fetch("/api/rights/requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingRequestRights.id,
+          rightsStatus: String(form.get("rightsStatus") || "review"),
+          rightsHolder: String(form.get("rightsHolder") || ""),
+          rightsSourceUrl: String(form.get("rightsSourceUrl") || ""),
+          rightsPermissionBy: String(form.get("rightsPermissionBy") || ""),
+          rightsNotes: String(form.get("rightsNotes") || ""),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "No se pudieron revisar los derechos");
+      setEditingRequestRights(null);
+      setNotice(`Derechos de la propuesta “${editingRequestRights.title}” revisados por ${payload.rights.reviewedBy}.`);
+      await load();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudieron revisar los derechos de la propuesta.");
     } finally {
       setBusyKey("");
     }
