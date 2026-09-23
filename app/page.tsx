@@ -316,13 +316,13 @@ export default function Home(){
         setBooks(loadedBooks);
         setPeople(loadedPeople);
         setCurrentUser(user=>{if(!user)return user;const person=loadedPeople.find(reader=>reader.id===user.id);return person?{...user,pagesRead:person.pages}:user});
-        setSelected(current=>current&&loadedBooks.some(book=>book.id===current.id)?current:(loadedBooks[0]||null));
+        setSelected(current=>current?(loadedBooks.find(book=>book.id===current.id)||loadedBooks[0]||null):(loadedBooks[0]||null));
         const eligibleForForum=loadedBooks.filter(book=>book.rightsStatus!=="rights_reserved"||book.markedRead);
         setPostBook(current=>current&&eligibleForForum.some(book=>book.title===current)?current:(eligibleForForum[0]?.title||""));
       })
       .catch(error=>console.error("No se pudo cargar el catálogo real",error));
     return ()=>{cancelled=true};
-  },[catalogNonce]);
+  },[catalogNonce,currentUser?.id]);
   useEffect(()=>{
     let cancelled=false;
     if(!currentUser){
