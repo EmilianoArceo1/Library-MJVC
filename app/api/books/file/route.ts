@@ -3,6 +3,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { books, loans } from "../../../../db/schema";
 import { getSessionUser } from "../../../auth-server";
+import { privateNoIndexHeaders } from "../../../rights-server";
+import { ensureWorkflowSchema } from "../../../workflow-server";
 
 type RuntimeEnv = {
   BOOK_FILES: R2Bucket;
@@ -14,6 +16,7 @@ function runtimeEnv(): RuntimeEnv {
 
 export async function GET(request: Request) {
   try {
+    await ensureWorkflowSchema();
     const session = await getSessionUser(request);
     if (!session) {
       return new Response("Inicia sesión para leer este libro.", { status: 401 });
@@ -30,6 +33,8 @@ export async function GET(request: Request) {
       .select({
         id: books.id,
         fileKey: books.fileKey,
+        publicationStatus: books.publicationStatus,
+        rightsStatus: books.rightsStatus,
       })
       .from(books)
       .where(eq(books.id, bookId))
@@ -38,8 +43,21 @@ export async function GET(request: Request) {
     if (!book?.fileKey) {
       return new Response("Este libro no tiene contenido de lectura asociado.", { status: 404 });
     }
+    const isApprovedAdmin =
+      session.role === "admin" &&
+      session.emailVerified &&
+      session.approvalStatus === "approved";
+    if (
+      !isApprovedAdmin &&
+      (book.publicationStatus !== "published" || book.rightsStatus === "review")
+    ) {
+      return new Response("Este contenido no está disponible para lectura.", {
+        status: 403,
+        headers: privateNoIndexHeaders("text/plain; charset=utf-8"),
+      });
+    }
 
-    if (session.role !== "admin" || session.approvalStatus !== "approved") {
+    if (!isApprovedAdmin) {
       const [loan] = await db
         .select({ id: loans.id })
         .from(loans)
@@ -62,9 +80,10 @@ export async function GET(request: Request) {
       return new Response("No encontramos el contenido reconstruido del libro.", { status: 404 });
     }
 
-    const headers = new Headers();
+    const headers = privateNoIndexHeaders();
     object.writeHttpMetadata(headers);
-    headers.set("Cache-Control", "private, max-age=300");
+    headers.set("Cache-Control", "private, no-store, max-age=0");
+    headers.set("Content-Disposition", "inline");
     headers.set("ETag", object.httpEtag);
 
     return new Response(object.body, { headers });
