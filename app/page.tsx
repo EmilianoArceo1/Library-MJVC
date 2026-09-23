@@ -494,6 +494,7 @@ export default function Home(){
       setBooks(current=>current.map(book=>book.id===returnedId?{...book,available:Math.min(book.copies,book.available+1),rating:Number(payload.rating)||book.rating,reads:Number.isFinite(Number(payload.reads))?Number(payload.reads):book.reads}:book));
       setSelected(current=>current?.id===returnedId?{...current,available:Math.min(current.copies,current.available+1),rating:Number(payload.rating)||current.rating,reads:Number.isFinite(Number(payload.reads))?Number(payload.reads):current.reads}:current);
       syncLocalPagesRead(payload.pagesRead);
+      if(payload.markedRead)setPostBook(current=>current||owned.title);
       setOwned(null);setLoanId(null);setModal(null);setReturnRating(0);setReturnQuestions([]);setReturnExtraQuestions(0);setView("biblioteca");setReaderPage(0);setReaderTotalPages(0);setReaderPages([]);setReaderClosing(false);setReaderReturnVisible(false);setReaderAnimating(false);setReaderPendingPage(null);
       flash("Libro devuelto sin terminar. Esta lectura no sumó páginas.");
     }catch(error){
