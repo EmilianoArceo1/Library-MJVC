@@ -35,7 +35,7 @@ type BookRequest = {
   updatedAt: number;
   lastDecisionBy?: string | null;
   lastDecisionAt?: number | null;
-  rightsStatus?: "own_work" | "public_domain" | "creative_commons" | "permission" | "official_source" | "review";
+  rightsStatus?: "own_work" | "public_domain" | "creative_commons" | "permission" | "rights_reserved" | "official_source" | "review";
   rightsHolder?: string;
   rightsSourceUrl?: string;
   rightsPermissionBy?: string;
@@ -71,7 +71,7 @@ type RightsBook = {
   author: string;
   year: number;
   publicationStatus: "published" | "hidden";
-  rightsStatus: "own_work" | "public_domain" | "creative_commons" | "permission" | "official_source" | "review";
+  rightsStatus: "own_work" | "public_domain" | "creative_commons" | "permission" | "rights_reserved" | "official_source" | "review";
   rightsHolder: string;
   rightsSourceUrl: string;
   rightsPermissionBy: string;
@@ -105,6 +105,7 @@ const RIGHTS_OPTIONS = [
   ["public_domain", "Dominio público"],
   ["creative_commons", "Creative Commons"],
   ["permission", "Permiso del titular"],
+  ["rights_reserved", "Derechos reservados"],
   ["official_source", "Fuente oficial con permiso"],
   ["review", "Situación por revisar"],
 ] as const;
@@ -434,7 +435,7 @@ export default function ManagementPanel({
         </button>
         <button className={tab === "rights" ? "active" : ""} onClick={() => setTab("rights")}>
           Derechos
-          <span>{rightsBooks.filter((book) => book.rightsStatus === "review").length + copyrightReports.filter((report) => report.status === "pending" || report.status === "reviewing").length}</span>
+          <span>{rightsBooks.filter((book) => book.rightsStatus === "review" || book.rightsStatus === "rights_reserved").length + copyrightReports.filter((report) => report.status === "pending" || report.status === "reviewing").length}</span>
         </button>
         {isAdmin && (
           <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
@@ -523,7 +524,7 @@ export default function ManagementPanel({
                     {request.rightsPermissionBy && <span>Permiso: {request.rightsPermissionBy}</span>}
                     {request.rightsNotes && <p>{request.rightsNotes}</p>}
                     {request.rightsEvidenceAvailable && <a href={`/api/rights/evidence?requestId=${request.id}`} target="_blank" rel="noreferrer">Ver evidencia privada ↗</a>}
-                    {request.rightsStatus === "review" && <b className="rights-warning">No puede aprobarse hasta resolver los derechos.</b>}
+                    {(request.rightsStatus === "review" || request.rightsStatus === "rights_reserved") && <b className="rights-warning">{request.rightsStatus === "rights_reserved" ? "Derechos reservados: requiere una base de autorización antes de publicar." : "No puede aprobarse hasta resolver los derechos."}</b>}
                   </div>
                   <small>
                     Propuesto por {request.requesterName} · {request.originalName}
@@ -539,7 +540,7 @@ export default function ManagementPanel({
                     </button>
                     <button
                       className="primary"
-                      disabled={Boolean(busyKey) || request.rightsStatus === "review"}
+                      disabled={Boolean(busyKey) || request.rightsStatus === "review" || request.rightsStatus === "rights_reserved"}
                       onClick={() => decide("book", request.id, "approved", `“${request.title}”`)}
                     >
                       Aprobar
@@ -801,7 +802,7 @@ export default function ManagementPanel({
               </a>
             )}
             <small className="rights-modal-help">
-              Si queda “Situación por revisar”, la propuesta no podrá aprobarse. Esta revisión no cambia por sí sola el dictamen de la solicitud.
+              Si queda “Situación por revisar” o “Derechos reservados”, la propuesta no podrá aprobarse. Para una obra protegida, registra después una base válida como “Permiso del titular” antes de publicarla.
             </small>
             <button className="primary wide" disabled={Boolean(busyKey)}>
               {busyKey.startsWith("request-rights:") ? "Guardando…" : "Guardar revisión"}
@@ -850,7 +851,7 @@ export default function ManagementPanel({
               <input type="checkbox" name="publish" defaultChecked={editingRights.publicationStatus === "published"} />
               <span>Publicar el libro si la situación de derechos permite hacerlo</span>
             </label>
-            <small className="rights-modal-help">Si eliges “Situación por revisar”, el servidor mantendrá el libro oculto aunque marques publicar.</small>
+            <small className="rights-modal-help">Si eliges “Situación por revisar” o “Derechos reservados”, el servidor mantendrá el libro oculto aunque marques publicar.</small>
             <button className="primary wide" disabled={Boolean(busyKey)}>
               {busyKey.startsWith("rights:") ? "Guardando…" : "Guardar revisión"}
             </button>
