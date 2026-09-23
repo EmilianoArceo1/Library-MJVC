@@ -2897,3 +2897,16 @@
   border-color:#405a78;
   color:#c8d9ee;
 }
+
+.email-verification-badge{
+  border-radius:99px;
+  padding:4px 7px;
+  font:700 8px Arial,sans-serif;
+  text-transform:uppercase;
+  letter-spacing:.45px;
+  white-space:nowrap;
+}
+.email-verification-badge.verified{background:#dcebdc;color:#356143}
+.email-verification-badge.unverified{background:#dfe8f4;color:#405d7d}
+:root[data-theme="dark"] .email-verification-badge.verified{background:#233629;color:#b9dfc0}
+:root[data-theme="dark"] .email-verification-badge.unverified{background:#243246;color:#bfd0e5}
