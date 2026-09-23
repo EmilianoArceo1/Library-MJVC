@@ -45,6 +45,8 @@ export async function GET(request: Request) {
         rightsEvidenceKey: books.rightsEvidenceKey,
         rightsVerifiedAt: books.rightsVerifiedAt,
         rightsVerifiedBy: books.rightsVerifiedBy,
+        reservedInternalAccess: books.reservedInternalAccess,
+        fileKey: books.fileKey,
       })
       .from(books)
       .orderBy(books.title);
@@ -54,7 +56,10 @@ export async function GET(request: Request) {
       books: rows.map((row) => ({
         ...row,
         rightsEvidenceAvailable: Boolean(row.rightsEvidenceKey),
+        hasInternalContent: Boolean(row.fileKey),
+        reservedInternalAccess: Boolean(row.reservedInternalAccess),
         rightsEvidenceKey: undefined,
+        fileKey: undefined,
       })),
       viewer: { role: session.role },
     }, { headers });
@@ -88,6 +93,7 @@ export async function PATCH(request: Request) {
       rightsPermissionBy?: string;
       rightsNotes?: string;
       publish?: boolean;
+      reservedInternalAccess?: boolean;
     };
 
     const id = Number(payload.id);
@@ -96,6 +102,7 @@ export async function PATCH(request: Request) {
     const sourceUrl = payload.rightsSourceUrl?.trim().slice(0, 1000) ?? "";
     const permissionBy = payload.rightsPermissionBy?.trim().slice(0, 180) ?? "";
     const notes = payload.rightsNotes?.trim().slice(0, 2000) ?? "";
+    const requestedInternalAccess = payload.reservedInternalAccess === true;
 
     if (!Number.isInteger(id) || id < 1 || !isRightsStatus(status)) {
       return Response.json({ error: "Datos de derechos inválidos." }, { status: 400 });
@@ -134,8 +141,23 @@ export async function PATCH(request: Request) {
     }
 
     const db = getDb();
-    const [current] = await db.select({ id: books.id }).from(books).where(eq(books.id, id)).limit(1);
+    const [current] = await db.select({ id: books.id, fileKey: books.fileKey }).from(books).where(eq(books.id, id)).limit(1);
     if (!current) return Response.json({ error: "Libro no encontrado." }, { status: 404 });
+
+    const reservedInternalAccess =
+      status === "rights_reserved" && requestedInternalAccess;
+    if (status === "rights_reserved" && !sourceUrl && !reservedInternalAccess) {
+      return Response.json(
+        { error: "Añade el enlace legal a la fuente o activa explícitamente la lectura interna bajo decisión administrativa." },
+        { status: 400 },
+      );
+    }
+    if (reservedInternalAccess && !current.fileKey) {
+      return Response.json(
+        { error: "No hay contenido interno almacenado para habilitar lectura dentro de la biblioteca." },
+        { status: 409 },
+      );
+    }
 
     const canPublish = rightsCanPublish(status) && payload.publish !== false;
     const [updated] = await db
@@ -146,6 +168,7 @@ export async function PATCH(request: Request) {
         rightsSourceUrl: sourceUrl,
         rightsPermissionBy: permissionBy,
         rightsNotes: notes,
+        reservedInternalAccess: reservedInternalAccess ? 1 : 0,
         rightsVerifiedAt: rightsCanPublish(status) ? Date.now() : null,
         rightsVerifiedBy: rightsCanPublish(status) ? session.name : null,
         publicationStatus: canPublish ? "published" : "hidden",
@@ -167,6 +190,8 @@ export async function PATCH(request: Request) {
         rightsEvidenceAvailable: Boolean(updated.rightsEvidenceKey),
         rightsVerifiedAt: updated.rightsVerifiedAt,
         rightsVerifiedBy: updated.rightsVerifiedBy,
+        reservedInternalAccess: Boolean(updated.reservedInternalAccess),
+        hasInternalContent: Boolean(updated.fileKey),
       },
     }, { headers });
   } catch (error) {
