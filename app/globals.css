@@ -3508,3 +3508,153 @@
 @media(max-width:760px){
   .return-choice-actions{grid-template-columns:1fr}
 }
+
+
+/* Viewport-safe compact book detail modal */
+.modal-back{
+  padding:16px;
+  overflow:hidden;
+}
+.book-modal{
+  width:min(1040px,calc(100vw - 32px));
+  max-height:calc(100dvh - 32px);
+  padding:26px;
+  grid-template-columns:minmax(220px,300px) minmax(0,1fr);
+  gap:28px;
+  align-items:start;
+  overflow:hidden;
+}
+.book-modal .modal-cover{
+  width:100%;
+  height:auto;
+  min-height:0;
+  max-height:410px;
+  aspect-ratio:3 / 4;
+  padding:18px;
+  align-self:start;
+}
+.book-modal .modal-cover span{
+  font-size:clamp(22px,2.4vw,30px);
+  line-height:1.12;
+}
+.book-modal .modal-copy{
+  min-width:0;
+  max-height:calc(100dvh - 84px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  padding:4px 6px 4px 0;
+}
+.book-modal .modal-copy h2{
+  font-size:clamp(30px,3.5vw,44px);
+  line-height:1.04;
+  margin:5px 0 8px;
+}
+.book-modal .modal-copy .by{
+  margin:0 0 8px;
+}
+.book-modal .modal-copy .rating{
+  margin:11px 0;
+}
+.book-modal .modal-copy>p:not(.eyebrow):not(.by){
+  line-height:1.45;
+  margin:11px 0;
+}
+.book-modal .meta-row{
+  margin:13px 0;
+  padding:10px 0;
+}
+.book-modal .rights-public-card{
+  margin:11px 0;
+  padding:10px 12px;
+}
+.book-modal .modal-reserved-actions{
+  margin:10px 0 2px;
+  padding:12px;
+  gap:8px;
+}
+.book-modal .modal-reserved-actions p{
+  font-size:10.5px;
+  line-height:1.45;
+}
+.book-modal .modal-reserved-actions .primary,
+.book-modal .modal-reserved-actions .secondary{
+  padding:10px 16px;
+}
+.book-modal .inspection-button{
+  margin-top:8px;
+  padding:10px 14px;
+}
+.book-modal .copyright-report-link{
+  padding-top:9px;
+}
+
+@media(max-height:760px) and (min-width:761px){
+  .modal-back{padding:10px}
+  .book-modal{
+    width:min(1100px,calc(100vw - 20px));
+    max-height:calc(100dvh - 20px);
+    padding:20px 22px;
+    grid-template-columns:minmax(190px,250px) minmax(0,1fr);
+    gap:22px;
+  }
+  .book-modal .modal-cover{
+    max-height:330px;
+    padding:15px;
+  }
+  .book-modal .modal-copy{
+    max-height:calc(100dvh - 60px);
+  }
+  .book-modal .modal-copy h2{
+    font-size:clamp(27px,3vw,38px);
+  }
+  .book-modal .modal-copy .rating{
+    margin:8px 0;
+  }
+  .book-modal .modal-copy>p:not(.eyebrow):not(.by){
+    margin:8px 0;
+    line-height:1.4;
+  }
+  .book-modal .meta-row{
+    margin:9px 0;
+    padding:8px 0;
+  }
+  .book-modal .rights-public-card{
+    margin:8px 0;
+    padding:8px 10px;
+  }
+  .book-modal .modal-reserved-actions{
+    margin-top:8px;
+    padding:10px;
+    gap:7px;
+  }
+}
+
+@media(max-width:760px){
+  .modal-back{
+    padding:10px;
+    align-items:start;
+  }
+  .book-modal{
+    width:min(100%,680px);
+    max-height:calc(100dvh - 20px);
+    grid-template-columns:1fr;
+    gap:16px;
+    padding:20px;
+    overflow-y:auto;
+  }
+  .book-modal .modal-cover{
+    width:min(180px,48vw);
+    max-height:none;
+    margin:0 auto;
+    aspect-ratio:3 / 4;
+  }
+  .book-modal .modal-copy{
+    max-height:none;
+    overflow:visible;
+    padding:0;
+  }
+  .book-modal .modal-copy h2{
+    font-size:30px;
+  }
+}
