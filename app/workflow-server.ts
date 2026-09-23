@@ -131,6 +131,23 @@ async function buildWorkflowSchema() {
       read_at INTEGER NOT NULL,
       PRIMARY KEY (notification_id, user_id)
     )`,
+    `CREATE TABLE IF NOT EXISTS copyright_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+      book_id INTEGER NOT NULL,
+      reporter_user_id TEXT NOT NULL,
+      reporter_name TEXT NOT NULL,
+      reporter_email TEXT NOT NULL,
+      claimant_name TEXT NOT NULL,
+      claimant_email TEXT NOT NULL,
+      relationship TEXT NOT NULL,
+      evidence_url TEXT NOT NULL DEFAULT '',
+      details TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      resolution_note TEXT NOT NULL DEFAULT '',
+      resolved_by TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS email_verification_tokens (
       token_hash TEXT PRIMARY KEY NOT NULL,
       user_id TEXT NOT NULL,
@@ -142,6 +159,8 @@ async function buildWorkflowSchema() {
     "CREATE INDEX IF NOT EXISTS idx_book_requests_status ON book_upload_requests(status, requested_at)",
     "CREATE INDEX IF NOT EXISTS idx_request_decisions_subject ON request_decisions(request_type, request_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_copyright_reports_status ON copyright_reports(status, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_copyright_reports_book ON copyright_reports(book_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_email_verification_user ON email_verification_tokens(user_id, created_at)",
   ];
 
