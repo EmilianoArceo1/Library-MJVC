@@ -432,7 +432,7 @@ export default function Home(){
       const payload=await response.json();
       if(!response.ok)throw new Error(payload.error||"No se pudo tomar el libro");
       setLoanId(Number(payload.loan.id));
-      setOwned({...selected,available:payload.loan.book.available,progress:0});
+      setOwned({...selected,...payload.loan.book,available:payload.loan.book.available,progress:0,countsForStats:payload.loan.countsForStats!==false});
       setBooks(current=>current.map(book=>book.id===selected.id?{...book,available:Math.max(0,book.available-1)}:book));
       setSelected(current=>current?.id===selected.id?{...current,available:Math.max(0,current.available-1)}:current);
       setModal(null);
