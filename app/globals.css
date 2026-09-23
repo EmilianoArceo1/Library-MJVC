@@ -2880,3 +2880,20 @@
   .notification-read-button{grid-column:2;justify-self:start}
   .notifications-hero h1,.management-hero h1{font-size:30px}
 }
+
+
+/* Email verification before registration approval */
+.account-status-banner.email-pending{
+  background:#eef3fb;
+  border-color:#9fb5d2;
+  color:#35506f;
+}
+.account-status-banner button:disabled{
+  opacity:.55;
+  cursor:wait;
+}
+:root[data-theme="dark"] .account-status-banner.email-pending{
+  background:#1e2a38;
+  border-color:#405a78;
+  color:#c8d9ee;
+}
