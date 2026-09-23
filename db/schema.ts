@@ -58,6 +58,7 @@ export const books = sqliteTable("books", {
   rightsEvidenceKey: text("rights_evidence_key"),
   rightsVerifiedAt: integer("rights_verified_at"),
   rightsVerifiedBy: text("rights_verified_by"),
+  reservedInternalAccess: integer("reserved_internal_access").notNull().default(0),
 });
 
 export const loans = sqliteTable("loans", {
@@ -68,6 +69,7 @@ export const loans = sqliteTable("loans", {
   returnedAt: integer("returned_at", { mode: "timestamp" }),
   rating: integer("rating"),
   progress: integer("progress").notNull().default(0),
+  statsEligible: integer("stats_eligible").notNull().default(1),
 });
 
 export const questions = sqliteTable("questions", {
