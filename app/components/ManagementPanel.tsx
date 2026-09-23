@@ -237,6 +237,71 @@ export default function ManagementPanel({
     }
   };
 
+  const saveRights = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingRights || !isAdmin) return;
+    const form = new FormData(event.currentTarget);
+    setBusyKey(`rights:${editingRights.id}`);
+    try {
+      const response = await fetch("/api/rights", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingRights.id,
+          rightsStatus: String(form.get("rightsStatus") || "review"),
+          rightsHolder: String(form.get("rightsHolder") || ""),
+          rightsSourceUrl: String(form.get("rightsSourceUrl") || ""),
+          rightsPermissionBy: String(form.get("rightsPermissionBy") || ""),
+          rightsNotes: String(form.get("rightsNotes") || ""),
+          publish: form.get("publish") === "on",
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "No se pudieron actualizar los derechos");
+      setEditingRights(null);
+      setNotice(`Derechos de “${editingRights.title}” actualizados.`);
+      await load();
+      onCatalogChanged?.();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudieron actualizar los derechos.");
+    } finally {
+      setBusyKey("");
+    }
+  };
+
+  const actOnCopyrightReport = async (
+    report: CopyrightReport,
+    action: "hide" | "resolve" | "dismiss" | "restore" | "reopen",
+  ) => {
+    if (!isAdmin) return;
+    const promptResult = window.prompt(
+      `Acción: ${action} · ${report.bookTitle || "libro"}\n\nNota de resolución (opcional):`,
+      report.resolutionNote || "",
+    );
+    if (promptResult === null) return;
+    setBusyKey(`copyright:${report.id}:${action}`);
+    try {
+      const response = await fetch("/api/copyright-reports", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: report.id,
+          action,
+          resolutionNote: promptResult.trim(),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "No se pudo actualizar el reporte");
+      setNotice(`Reporte de “${report.bookTitle || "libro"}” actualizado por ${payload.actor}.`);
+      await load();
+      onCatalogChanged?.();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudo actualizar el reporte.");
+    } finally {
+      setBusyKey("");
+    }
+  };
+
   const saveUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!editingUser) return;
