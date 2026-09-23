@@ -1,8 +1,13 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { env } from "cloudflare:workers";
 import { getDb } from "../../../db";
 import { answers, books, loans, questions } from "../../../db/schema";
 import { getSessionUser } from "../../auth-server";
-import { countUniqueCompletedReads, recordReadingProgress, syncUserPagesRead } from "../../reading-stats";
+import {
+  countUniqueCompletedReads,
+  recordReadingProgress,
+  syncUserPagesRead,
+} from "../../reading-stats";
 import { ensureWorkflowSchema } from "../../workflow-server";
 import { privateNoIndexHeaders } from "../../rights-server";
 
@@ -18,6 +23,10 @@ function bookDto(row: {
   totalCopies: number;
   availableCopies: number;
   progress: number;
+  rightsStatus?: string;
+  rightsSourceUrl?: string;
+  reservedInternalAccess?: number;
+  statsEligible?: number;
 }) {
   return {
     id: row.id,
@@ -32,11 +41,25 @@ function bookDto(row: {
     available: row.availableCopies,
     readers: [],
     progress: row.progress,
+    rightsStatus: row.rightsStatus,
+    rightsSourceUrl: row.rightsSourceUrl,
+    reservedInternalAccess: Boolean(row.reservedInternalAccess),
+    countsForStats: row.statsEligible !== 0,
   };
+}
+
+async function reservedReadCount(bookId: number): Promise<number> {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS reads FROM book_read_acknowledgements WHERE book_id = ?",
+  )
+    .bind(bookId)
+    .first<{ reads: number }>();
+  return Number(row?.reads) || 0;
 }
 
 export async function GET(request: Request) {
   try {
+    await ensureWorkflowSchema();
     const session = await getSessionUser(request);
     if (!session) return Response.json({ loan: null });
 
@@ -45,6 +68,7 @@ export async function GET(request: Request) {
       .select({
         loanId: loans.id,
         progress: loans.progress,
+        statsEligible: loans.statsEligible,
         id: books.id,
         title: books.title,
         author: books.author,
@@ -55,6 +79,9 @@ export async function GET(request: Request) {
         rating: books.rating,
         totalCopies: books.totalCopies,
         availableCopies: books.availableCopies,
+        rightsStatus: books.rightsStatus,
+        rightsSourceUrl: books.rightsSourceUrl,
+        reservedInternalAccess: books.reservedInternalAccess,
       })
       .from(loans)
       .innerJoin(books, eq(loans.bookId, books.id))
@@ -67,6 +94,7 @@ export async function GET(request: Request) {
       loan: {
         id: row.loanId,
         progress: row.progress,
+        countsForStats: row.statsEligible !== 0,
         book: bookDto(row),
       },
     });
@@ -111,27 +139,35 @@ export async function POST(request: Request) {
       );
     }
 
-    const [book] = await db
-      .select()
-      .from(books)
-      .where(eq(books.id, bookId))
-      .limit(1);
-
+    const [book] = await db.select().from(books).where(eq(books.id, bookId)).limit(1);
     if (!book) {
       return Response.json({ error: "Ese libro ya no existe." }, { status: 404 });
     }
 
-    if (book.publicationStatus !== "published" || book.rightsStatus === "review" || book.rightsStatus === "rights_reserved") {
+    if (book.publicationStatus !== "published" || book.rightsStatus === "review") {
       return Response.json(
-        { error: "Este libro está oculto mientras se revisa su situación de derechos." },
+        { error: "Este libro no está disponible para préstamo." },
         { status: 403, headers: privateNoIndexHeaders("application/json; charset=utf-8") },
       );
     }
 
+    if (book.rightsStatus === "rights_reserved" && !book.reservedInternalAccess) {
+      return Response.json(
+        { error: "Esta obra se lee directamente en su fuente legal externa." },
+        { status: 409 },
+      );
+    }
+    if (!book.fileKey) {
+      return Response.json(
+        { error: "Este título no tiene una copia interna disponible para préstamo." },
+        { status: 409 },
+      );
+    }
     if (book.availableCopies < 1) {
       return Response.json({ error: "Ese libro no está disponible." }, { status: 409 });
     }
 
+    const statsEligible = book.rightsStatus === "rights_reserved" ? 0 : 1;
     const borrowedAt = new Date();
     const results = await db.batch([
       db
@@ -141,6 +177,7 @@ export async function POST(request: Request) {
           userId: session.id,
           borrowedAt,
           progress: 0,
+          statsEligible,
         })
         .returning({ id: loans.id }),
       db
@@ -150,16 +187,21 @@ export async function POST(request: Request) {
     ]);
 
     const loanId = results[0][0]?.id;
-    if (typeof loanId === "number") await recordReadingProgress(loanId, 0);
+    if (typeof loanId === "number" && statsEligible) {
+      await recordReadingProgress(loanId, 0);
+    }
+
     return Response.json(
       {
         loan: {
           id: loanId,
           progress: 0,
+          countsForStats: Boolean(statsEligible),
           book: bookDto({
             ...book,
             availableCopies: book.availableCopies - 1,
             progress: 0,
+            statsEligible,
           }),
         },
       },
@@ -174,6 +216,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    await ensureWorkflowSchema();
     const session = await getSessionUser(request);
     if (!session) {
       return Response.json({ error: "Inicia sesión para actualizar tu lectura." }, { status: 401 });
@@ -181,7 +224,7 @@ export async function PATCH(request: Request) {
 
     const payload = (await request.json()) as {
       loanId?: number;
-      action?: "progress" | "return";
+      action?: "progress" | "return" | "abandon";
       progress?: number;
       rating?: number;
       question?: string;
@@ -199,7 +242,10 @@ export async function PATCH(request: Request) {
         id: loans.id,
         bookId: loans.bookId,
         progress: loans.progress,
+        statsEligible: loans.statsEligible,
         pages: books.pages,
+        rightsStatus: books.rightsStatus,
+        currentRating: books.rating,
       })
       .from(loans)
       .innerJoin(books, eq(loans.bookId, books.id))
@@ -214,6 +260,38 @@ export async function PATCH(request: Request) {
 
     if (!active) {
       return Response.json({ error: "Ese préstamo ya no está activo." }, { status: 404 });
+    }
+
+    if (payload.action === "abandon") {
+      await db.batch([
+        db
+          .update(loans)
+          .set({
+            returnedAt: new Date(),
+            statsEligible: 0,
+            rating: null,
+          })
+          .where(eq(loans.id, loanId)),
+        db
+          .update(books)
+          .set({ availableCopies: sql`${books.availableCopies} + 1` })
+          .where(eq(books.id, active.bookId)),
+      ]);
+
+      const [pagesRead, uniqueReads] = await Promise.all([
+        syncUserPagesRead(session.id),
+        active.rightsStatus === "rights_reserved"
+          ? reservedReadCount(active.bookId)
+          : countUniqueCompletedReads(active.bookId),
+      ]);
+
+      return Response.json({
+        ok: true,
+        abandoned: true,
+        rating: active.currentRating,
+        reads: uniqueReads,
+        pagesRead,
+      });
     }
 
     if (payload.action === "return") {
@@ -235,10 +313,7 @@ export async function PATCH(request: Request) {
 
       const [questionRows, answeredRows] = await Promise.all([
         db
-          .select({
-            id: questions.id,
-            userId: questions.userId,
-          })
+          .select({ id: questions.id, userId: questions.userId })
           .from(questions)
           .where(eq(questions.bookId, active.bookId))
           .orderBy(questions.createdAt),
@@ -248,20 +323,13 @@ export async function PATCH(request: Request) {
           .where(eq(answers.userId, session.id)),
       ]);
 
-      const alreadyAnswered = new Set(
-        answeredRows.map((row) => row.questionId),
-      );
+      const alreadyAnswered = new Set(answeredRows.map((row) => row.questionId));
       const requiredQuestionIds = questionRows
-        .filter(
-          (row) =>
-            row.userId !== session.id && !alreadyAnswered.has(row.id),
-        )
+        .filter((row) => row.userId !== session.id && !alreadyAnswered.has(row.id))
         .slice(0, 3)
         .map((row) => row.id);
 
-      const submittedAnswers = Array.isArray(payload.answers)
-        ? payload.answers
-        : [];
+      const submittedAnswers = Array.isArray(payload.answers) ? payload.answers : [];
       const answerMap = new Map<number, string>();
       for (const answer of submittedAnswers) {
         const questionId = Number(answer.questionId);
@@ -276,15 +344,9 @@ export async function PATCH(request: Request) {
         }
       }
 
-      const missingRequired = requiredQuestionIds.some(
-        (questionId) => !answerMap.get(questionId),
-      );
-      if (missingRequired) {
+      if (requiredQuestionIds.some((questionId) => !answerMap.get(questionId))) {
         return Response.json(
-          {
-            error:
-              "Responde las preguntas mostradas. Nunca te pediremos más de 3 por devolución.",
-          },
+          { error: "Responde las preguntas mostradas. Nunca te pediremos más de 3 por devolución." },
           { status: 400 },
         );
       }
@@ -292,11 +354,7 @@ export async function PATCH(request: Request) {
       for (const questionId of requiredQuestionIds) {
         const body = answerMap.get(questionId);
         if (!body) continue;
-        await db.insert(answers).values({
-          questionId,
-          userId: session.id,
-          body,
-        });
+        await db.insert(answers).values({ questionId, userId: session.id, body });
       }
 
       if (proposedQuestion) {
@@ -311,11 +369,7 @@ export async function PATCH(request: Request) {
       await db.batch([
         db
           .update(loans)
-          .set({
-            returnedAt: new Date(),
-            progress: 100,
-            rating,
-          })
+          .set({ returnedAt: new Date(), progress: 100, rating })
           .where(eq(loans.id, loanId)),
         db
           .update(books)
@@ -323,11 +377,23 @@ export async function PATCH(request: Request) {
           .where(eq(books.id, active.bookId)),
       ]);
 
-      await recordReadingProgress(loanId, 100);
-      const [pagesRead, uniqueReads] = await Promise.all([
-        syncUserPagesRead(session.id),
-        countUniqueCompletedReads(active.bookId),
-      ]);
+      if (active.statsEligible) {
+        await recordReadingProgress(loanId, 100);
+      }
+
+      if (active.rightsStatus === "rights_reserved") {
+        await env.DB.prepare(
+          `INSERT INTO book_read_acknowledgements (user_id, book_id, marked_at, source)
+           VALUES (?, ?, ?, 'hosted')
+           ON CONFLICT(user_id, book_id) DO UPDATE SET
+             marked_at = excluded.marked_at,
+             source = excluded.source`,
+        )
+          .bind(session.id, active.bookId, Date.now())
+          .run();
+      }
+
+      const pagesRead = await syncUserPagesRead(session.id);
 
       const loanRows = await db
         .select({ rating: loans.rating })
@@ -339,22 +405,23 @@ export async function PATCH(request: Request) {
       const averageRating =
         ratings.length > 0
           ? Math.round(
-              (ratings.reduce((total, value) => total + value, 0) /
-                ratings.length) *
-                100,
+              (ratings.reduce((total, value) => total + value, 0) / ratings.length) * 100,
             ) / 100
           : 0;
 
-      await db
-        .update(books)
-        .set({ rating: averageRating })
-        .where(eq(books.id, active.bookId));
+      await db.update(books).set({ rating: averageRating }).where(eq(books.id, active.bookId));
+
+      const uniqueReads =
+        active.rightsStatus === "rights_reserved"
+          ? await reservedReadCount(active.bookId)
+          : await countUniqueCompletedReads(active.bookId);
 
       return Response.json({
         ok: true,
         rating: averageRating,
         reads: uniqueReads,
         pagesRead,
+        markedRead: active.rightsStatus === "rights_reserved",
       });
     }
 
@@ -363,15 +430,19 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "El progreso debe estar entre 0 y 100." }, { status: 400 });
     }
 
-    await db
-      .update(loans)
-      .set({ progress })
-      .where(eq(loans.id, loanId));
+    await db.update(loans).set({ progress }).where(eq(loans.id, loanId));
 
-    await recordReadingProgress(loanId, progress);
+    if (active.statsEligible) {
+      await recordReadingProgress(loanId, progress);
+    }
     const pagesRead = await syncUserPagesRead(session.id);
 
-    return Response.json({ ok: true, progress, pagesRead });
+    return Response.json({
+      ok: true,
+      progress,
+      pagesRead,
+      countsForStats: active.statsEligible !== 0,
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "No se pudo actualizar la lectura.";
