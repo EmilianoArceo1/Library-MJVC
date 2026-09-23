@@ -3,6 +3,7 @@ import Link from "next/link";
 import BookLogo from "../components/BookLogo";
 
 export const metadata: Metadata = {
+  robots: { index: true, follow: true },
   title: "Política de privacidad | Biblioteca Jornadas",
   description:
     "Política de privacidad de la Biblioteca virtual de Jornadas de Vida Cristiana Mérida.",
