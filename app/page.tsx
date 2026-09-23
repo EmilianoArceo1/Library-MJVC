@@ -147,11 +147,11 @@ function ReaderFinalCloseTransition({pages,start,cover,title,author}:{pages:Reco
 export default function Home(){
   const [view,setView]=useState<View>("biblioteca"),[books,setBooks]=useState<Book[]>([]),[people,setPeople]=useState<Reader[]>([]),[selected,setSelected]=useState<Book|null>(null),[search,setSearch]=useState(""),[year,setYear]=useState(""),[type,setType]=useState("");
   const readBooks=books;
-  const [owned,setOwned]=useState<Book|null>(null),[toast,setToast]=useState(""),[modal,setModal]=useState<"detail"|"return"|"profile"|null>(null),[posts,setPosts]=useState<ForumPost[]>(initialPosts),[draft,setDraft]=useState(""),[publishing,setPublishing]=useState(false),[postBook,setPostBook]=useState(""),[liked,setLiked]=useState<number[]>([]),[reactionCounts,setReactionCounts]=useState<Record<string,number>>({}),[reactionBusy,setReactionBusy]=useState<string[]>([]);
+  const [owned,setOwned]=useState<Book|null>(null),[toast,setToast]=useState(""),[modal,setModal]=useState<"detail"|"return"|"profile"|"copyright"|null>(null),[posts,setPosts]=useState<ForumPost[]>(initialPosts),[draft,setDraft]=useState(""),[publishing,setPublishing]=useState(false),[postBook,setPostBook]=useState(""),[liked,setLiked]=useState<number[]>([]),[reactionCounts,setReactionCounts]=useState<Record<string,number>>({}),[reactionBusy,setReactionBusy]=useState<string[]>([]);
   const [repliesOpen,setRepliesOpen]=useState<number|null>(null),[replyDrafts,setReplyDrafts]=useState<Record<number,string>>({}),[profileReactions,setProfileReactions]=useState<string[]>([]),[returnRating,setReturnRating]=useState(0),[fileInfo,setFileInfo]=useState(""),[detectedPages,setDetectedPages]=useState(0),[bookPackage,setBookPackage]=useState(""),[bookUploading,setBookUploading]=useState(false);
   const [currentUser,setCurrentUser]=useState<SessionUser|null>(null),[authLoading,setAuthLoading]=useState(true),[authView,setAuthView]=useState<"login"|"signup"|"recover"|null>(null),[authSubmitting,setAuthSubmitting]=useState(false),[profileSaving,setProfileSaving]=useState(false),[photoUploading,setPhotoUploading]=useState(false),[theme,setTheme]=useState<Theme>("light"),[themeSaving,setThemeSaving]=useState(false),[notificationUnread,setNotificationUnread]=useState(0),[catalogNonce,setCatalogNonce]=useState(0),[verificationResending,setVerificationResending]=useState(false);
   const [loanId,setLoanId]=useState<number|null>(null),[readerPage,setReaderPage]=useState(0),[readerTotalPages,setReaderTotalPages]=useState(0),[readerPages,setReaderPages]=useState<ReconstructedPage[]>([]),[readerLoading,setReaderLoading]=useState(false),[readerError,setReaderError]=useState(""),[readerZoom,setReaderZoom]=useState(1),[readerMode,setReaderMode]=useState<ReaderMode>("book"),[continuousFontSize,setContinuousFontSize]=useState(27),[readerTurn,setReaderTurn]=useState<"next"|"prev">("next"),[readerPendingPage,setReaderPendingPage]=useState<number|null>(null),[readerAnimating,setReaderAnimating]=useState(false),[readerClosing,setReaderClosing]=useState(false),[readerReturnVisible,setReaderReturnVisible]=useState(false);
-  const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false),[returnQuestions,setReturnQuestions]=useState<ReaderQuestion[]>([]),[returnQuestionsLoading,setReturnQuestionsLoading]=useState(false),[returnExtraQuestions,setReturnExtraQuestions]=useState(0);
+  const [editingBook,setEditingBook]=useState<Book|null>(null),[bookAdminBusy,setBookAdminBusy]=useState(false),[returnQuestions,setReturnQuestions]=useState<ReaderQuestion[]>([]),[returnQuestionsLoading,setReturnQuestionsLoading]=useState(false),[returnExtraQuestions,setReturnExtraQuestions]=useState(0),[copyrightSubmitting,setCopyrightSubmitting]=useState(false);
   const pinchPointersRef=useRef<Map<number,{x:number;y:number}>>(new Map()),pinchStartRef=useRef<{distance:number;zoom:number}|null>(null),readerTurnTimerRef=useRef<number|null>(null),readerFinishTimerRef=useRef<number|null>(null),readerFinishShownRef=useRef(false),readerContinuousRef=useRef<HTMLDivElement|null>(null),continuousProgressTimerRef=useRef<number|null>(null);
   const [shelfPage,setShelfPage]=useState(0);
   const sortedBooks=useMemo(()=>[...books].sort((a,b)=>a.title.localeCompare(b.title,"es",{sensitivity:"base"})),[books]);
@@ -874,6 +874,30 @@ export default function Home(){
       flash(error instanceof Error?error.message:"No se pudo eliminar el libro.");
     }finally{
       setBookAdminBusy(false);
+    }
+  };
+  const submitCopyrightReport=async(event:FormEvent<HTMLFormElement>)=>{
+    event.preventDefault();
+    if(!selected||!currentUser||copyrightSubmitting)return;
+    const data=new FormData(event.currentTarget);
+    setCopyrightSubmitting(true);
+    try{
+      const response=await fetch("/api/copyright-reports",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        bookId:selected.id,
+        claimantName:String(data.get("claimantName")||""),
+        claimantEmail:String(data.get("claimantEmail")||""),
+        relationship:String(data.get("relationship")||""),
+        evidenceUrl:String(data.get("evidenceUrl")||""),
+        details:String(data.get("details")||""),
+      })});
+      const payload=await response.json();
+      if(!response.ok)throw new Error(payload.error||"No se pudo enviar el reporte");
+      setModal(null);
+      flash(payload.message||"Reporte recibido.");
+    }catch(error){
+      flash(error instanceof Error?error.message:"No se pudo enviar el reporte.");
+    }finally{
+      setCopyrightSubmitting(false);
     }
   };
   const submitAuth=async(event:FormEvent<HTMLFormElement>)=>{
