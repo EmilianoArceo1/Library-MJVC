@@ -163,6 +163,7 @@ export default function TermsPage() {
 
         <nav className="legal-links">
           <Link href="/privacidad">Política de privacidad</Link>
+          <Link href="/derechos-de-autor">Derechos de autor</Link>
           <Link href="/">Biblioteca</Link>
         </nav>
       </article>
